@@ -1,9 +1,20 @@
 import os
 import logging
-import fitz
 from config import UPLOADS_DIR
 
 logger = logging.getLogger(__name__)
+
+try:
+    import fitz
+    HAS_FITZ = True
+except ImportError:
+    HAS_FITZ = False
+
+try:
+    import pdfplumber
+    HAS_PDFPLUMBER = True
+except ImportError:
+    HAS_PDFPLUMBER = False
 
 
 class LectureProcessor:
@@ -19,6 +30,18 @@ class LectureProcessor:
 
     @staticmethod
     def _extract_pdf(file_path: str) -> str:
+        if HAS_FITZ:
+            return LectureProcessor._extract_pdf_fitz(file_path)
+        elif HAS_PDFPLUMBER:
+            return LectureProcessor._extract_pdf_plumber(file_path)
+        else:
+            raise ImportError(
+                "No PDF library available. Install PyMuPDF (pip install -r requirements-local.txt) "
+                "or pdfplumber (pip install -r requirements.txt)."
+            )
+
+    @staticmethod
+    def _extract_pdf_fitz(file_path: str) -> str:
         text = []
         try:
             doc = fitz.open(file_path)
@@ -26,7 +49,21 @@ class LectureProcessor:
                 text.append(page.get_text())
             doc.close()
         except Exception as e:
-            logger.error(f"PDF extraction error: {e}")
+            logger.error(f"PDF extraction error (fitz): {e}")
+            raise
+        return "\n".join(text)
+
+    @staticmethod
+    def _extract_pdf_plumber(file_path: str) -> str:
+        text = []
+        try:
+            with pdfplumber.open(file_path) as doc:
+                for page in doc.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text.append(page_text)
+        except Exception as e:
+            logger.error(f"PDF extraction error (pdfplumber): {e}")
             raise
         return "\n".join(text)
 
