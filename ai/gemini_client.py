@@ -1,0 +1,148 @@
+import google.generativeai as genai
+import json
+import re
+import logging
+from . import prompts
+from config import GEMINI_API_KEY, GEMINI_MODEL
+
+logger = logging.getLogger(__name__)
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+
+class GeminiClient:
+    def __init__(self):
+        self.model = genai.GenerativeModel(GEMINI_MODEL)
+
+    def _generate(self, prompt: str, system_instruction: str = None) -> str:
+        try:
+            model = self.model
+            if system_instruction:
+                model = genai.GenerativeModel(
+                    GEMINI_MODEL,
+                    system_instruction=system_instruction
+                )
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            logger.error(f"Gemini API error: {e}")
+            return ""
+
+    def _generate_with_history(self, history: list, prompt: str, system_instruction: str = None) -> str:
+        try:
+            model = model = genai.GenerativeModel(
+                GEMINI_MODEL,
+                system_instruction=system_instruction
+            )
+            contents = []
+            for msg in history:
+                role = "user" if msg["role"] == "user" else "model"
+                contents.append({"role": role, "parts": [msg["text"]]})
+            contents.append({"role": "user", "parts": [prompt]})
+            response = model.generate_content(contents)
+            return response.text
+        except Exception as e:
+            logger.error(f"Gemini chat error: {e}")
+            return ""
+
+    def chat(self, user_text: str, context: dict) -> dict:
+        course = context.get("course", "")
+        lecture = context.get("lecture", "")
+        mode = context.get("mode", "daily")
+        weak_topics = ", ".join(context.get("weak_topics", [])) or "none"
+        history = context.get("history", [])
+
+        system = prompts.SYSTEM_PROMPT.format(
+            course=course or "not set",
+            lecture=lecture or "not set",
+            mode=mode,
+            weak_topics=weak_topics,
+        )
+
+        raw = self._generate_with_history(history, user_text, system)
+
+        text, state_updates = self._parse_response(raw)
+        return {
+            "text": text,
+            "state_updates": state_updates,
+        }
+
+    def _parse_response(self, raw: str) -> tuple:
+        text = raw
+        state_updates = {}
+
+        lines = raw.split("\n")
+        clean_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("COURSE:"):
+                val = stripped[len("COURSE:"):].strip()
+                if val:
+                    state_updates["course"] = val
+            elif stripped.startswith("LECTURE:"):
+                val = stripped[len("LECTURE:"):].strip()
+                if val:
+                    state_updates["lecture"] = val
+            elif stripped.startswith("MODE:"):
+                val = stripped[len("MODE:"):].strip().lower()
+                if val in ("daily", "deep", "teaching", "oral_exam"):
+                    state_updates["mode"] = val
+            elif stripped.startswith("REMINDER:"):
+                val = stripped[len("REMINDER:"):].strip()
+                if val:
+                    state_updates["reminder"] = val
+            elif stripped.startswith("WEAK_TOPIC:"):
+                val = stripped[len("WEAK_TOPIC:"):].strip()
+                if val:
+                    state_updates.setdefault("weak_topics", []).append(val)
+            else:
+                clean_lines.append(line)
+
+        text = "\n".join(clean_lines).strip()
+        return text, state_updates
+
+    def generate_lecture_content(self, title: str, course: str, text: str) -> dict:
+        prompt = prompts.GENERATE_LECTURE_CONTENT.format(
+            title=title,
+            course=course,
+            text=text
+        )
+        raw = self._generate(prompt)
+        return self._safe_parse_json(raw, {
+            "summary": "",
+            "key_concepts": [],
+            "important_equations": [],
+            "common_misconceptions": [],
+            "questions": [],
+        })
+
+    def parse_upload_intent(self, text_excerpt: str, current_course: str = "",
+                            current_lecture: str = "") -> dict:
+        prompt = prompts.PARSE_UPLOAD_INTENT.format(
+            current_course=current_course or "none",
+            current_lecture=current_lecture or "none",
+            text_excerpt=text_excerpt[:2000],
+        )
+        raw = self._generate(prompt)
+        return self._safe_parse_json(raw, {
+            "course": None,
+            "lecture": None,
+            "suggested_course": None,
+            "suggested_lecture": None,
+        })
+
+    def generate_follow_up(self, topic: str, answer: str) -> str:
+        prompt = prompts.GENERATE_FOLLOW_UP.format(topic=topic, answer=answer)
+        return self._generate(prompt)
+
+    def _safe_parse_json(self, raw: str, default: dict) -> dict:
+        if not raw:
+            return default
+        try:
+            json_match = re.search(r'\{[\s\S]*\}', raw)
+            if json_match:
+                return json.loads(json_match.group())
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse JSON from Gemini: {raw[:200]}")
+            return default
