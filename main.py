@@ -21,14 +21,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Module-level overrides (set by CLI args before uvicorn starts)
+_override_token = ""
+_override_webhook = ""
+
 app = FastAPI(title="Study Companion Bot")
 db = Database()
 ai = GeminiClient()
 handlers = BotHandlers(db, ai)
 ptb_app: Application = None
-
-app.state.bot_token = ""
-app.state.webhook_url = ""
 
 
 @app.on_event("startup")
@@ -36,11 +37,11 @@ async def startup():
     global ptb_app
     logger.info("Starting up...")
 
-    token = os.getenv("TELEGRAM_BOT_TOKEN") or app.state.bot_token or CFG_TOKEN
-    webhook = os.getenv("WEBHOOK_URL") or app.state.webhook_url or CFG_WEBHOOK
+    token = os.getenv("TELEGRAM_BOT_TOKEN") or _override_token or CFG_TOKEN
+    webhook = os.getenv("WEBHOOK_URL") or _override_webhook or CFG_WEBHOOK
 
     if not token:
-        logger.error("No TELEGRAM_BOT_TOKEN provided. Set via --token, env var, or config.")
+        logger.error("No TELEGRAM_BOT_TOKEN provided.")
         return
 
     ptb_app = Application.builder().token(token).build()
@@ -99,17 +100,19 @@ async def root():
 
 
 def main():
+    global _override_webhook
+
     parser = argparse.ArgumentParser(description="Study Companion Bot")
     parser.add_argument("--webhook-url", help="Webhook URL, e.g. https://your-app.onrender.com")
     parser.add_argument("--port", type=int, default=CFG_PORT, help="Port to listen on")
     args, _ = parser.parse_known_args()
 
     if args.webhook_url:
-        app.state.webhook_url = args.webhook_url
+        _override_webhook = args.webhook_url
 
     port = args.port or CFG_PORT
     logger.info(f"Starting server on port {port}")
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=port, reload=False)
 
 
 if __name__ == "__main__":
