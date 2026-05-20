@@ -3,12 +3,34 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 from services.lecture_processor import LectureProcessor
-from services.reminder_service import ReminderService
 from services.revision_service import RevisionService
 from database.db import Database
 from ai.gemini_client import GeminiClient
 
 logger = logging.getLogger(__name__)
+
+MAX_MSG_LEN = 4000
+
+
+def split_message(text: str) -> list[str]:
+    if len(text) <= MAX_MSG_LEN:
+        return [text]
+    chunks = []
+    while len(text) > MAX_MSG_LEN:
+        cut = text.rfind("\n\n", 0, MAX_MSG_LEN)
+        if cut == -1:
+            cut = text.rfind(". ", 0, MAX_MSG_LEN)
+            if cut != -1:
+                cut += 1
+        if cut == -1:
+            cut = text.rfind(" ", 0, MAX_MSG_LEN)
+        if cut == -1:
+            cut = MAX_MSG_LEN
+        chunks.append(text[:cut].strip())
+        text = text[cut:].strip()
+    if text:
+        chunks.append(text)
+    return chunks
 
 
 class BotHandlers:
@@ -16,77 +38,43 @@ class BotHandlers:
         self.db = db
         self.ai = ai
         self.processor = LectureProcessor()
-        self.reminder_service = ReminderService(db)
         self.revision_service = RevisionService(db, ai)
+
+    async def _reply(self, update: Update, text: str):
+        for chunk in split_message(text):
+            await update.message.reply_text(chunk)
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         text = update.message.text.strip()
-
         if not text:
             return
 
-        session = self.db.get_or_create_session(user_id)
+        ctx = self.db.get_chat_context(user_id)
 
-        due_reminders = self.reminder_service.get_due_reminders(user_id)
         reminder_msg = ""
-        if due_reminders:
-            reminder_msg = self.reminder_service.format_reminder_message(due_reminders)
-            for r in due_reminders:
+        if ctx["reminders"]:
+            lines = ["\U0001F4CC *Here are your pending reminders:*"]
+            for r in ctx["reminders"]:
+                tag = f" [{r['course']}" + (f" \u2192 {r['lecture']}]" if r["lecture"] else "]") if r["course"] else ""
+                lines.append(f"\u2022 {r['content']}{tag}")
+            reminder_msg = "\n".join(lines)
+            for r in ctx["reminders"]:
                 self.db.update_reminder_schedule(r["id"], True)
 
-        weak = self.db.get_weak_topics(user_id)
-        course = ""
-        lecture = ""
-        if session.get("current_course_id"):
-            c = self.db.get_course(session["current_course_id"])
-            if c:
-                course = c["title"]
-        if session.get("current_lecture_id"):
-            l = self.db.get_lecture(session["current_lecture_id"])
-            if l:
-                lecture = l["title"]
-
-        history = __import__("json").loads(session.get("history", "[]"))
-
-        response_data = self.ai.chat(text, {
-            "course": course,
-            "lecture": lecture,
-            "mode": session.get("revision_mode", "daily"),
-            "weak_topics": [w["topic"] for w in weak],
-            "history": history,
-        })
-
+        response_data = self.ai.chat(text, ctx)
         reply = response_data["text"]
         updates = response_data["state_updates"]
 
         if reminder_msg:
             reply = f"{reminder_msg}\n\n{reply}"
 
-        if "course" in updates:
-            new_course = self.db.find_or_create_course(updates["course"], user_id)
-            self.db.update_session(user_id, current_course_id=new_course["id"])
-            course = new_course["title"]
-        if "lecture" in updates:
-            cid = session.get("current_course_id")
-            if not cid and course:
-                c = self.db.find_or_create_course(course, user_id)
-                cid = c["id"]
-            if cid:
-                new_lecture = self.db.find_or_create_lecture(cid, updates["lecture"])
-                self.db.update_session(user_id, current_lecture_id=new_lecture["id"])
-                lecture = new_lecture["title"]
-        if "mode" in updates:
-            self.db.update_session(user_id, revision_mode=updates["mode"])
-        if "reminder" in updates:
-            self.reminder_service.create_reminder(
-                user_id, updates["reminder"], course or None, lecture or None
-            )
+        updates["course_title"] = ctx["course"]
+        updates["lecture_title"] = ctx["lecture"]
 
-        self.db.add_to_history(user_id, "user", text)
-        self.db.add_to_history(user_id, "assistant", reply)
+        self.db.save_chat_interaction(user_id, text, reply, updates)
 
-        await update.message.reply_text(reply)
+        await self._reply(update, reply)
 
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
@@ -98,9 +86,7 @@ class BotHandlers:
 
         ext = os.path.splitext(doc.file_name)[1].lower()
         if ext not in (".pdf", ".txt", ".md"):
-            await update.message.reply_text(
-                "I can only process PDF, TXT, and Markdown files."
-            )
+            await update.message.reply_text("I can only process PDF, TXT, and Markdown files.")
             return
 
         await update.message.reply_text("Downloading your file...")
@@ -127,7 +113,7 @@ class BotHandlers:
             )
 
             reply = (
-                f"✅ Processed! Added to course *{result['course']}* → "
+                f"\u2705 Processed! Added to course *{result['course']}* \u2192 "
                 f"lecture *{result['lecture']}*.\n\n"
                 f"{result['summary']}\n\n"
                 f"Generated {result['question_count']} revision questions. "
@@ -137,7 +123,8 @@ class BotHandlers:
             self.db.add_to_history(user_id, "user", f"[Uploaded file: {doc.file_name}]")
             self.db.add_to_history(user_id, "assistant", reply)
 
-            await update.message.reply_text(reply, parse_mode="Markdown")
+            for chunk in split_message(reply):
+                await update.message.reply_text(chunk, parse_mode="Markdown")
 
         except Exception as e:
             logger.error(f"File processing error: {e}")

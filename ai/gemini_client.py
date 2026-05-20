@@ -30,7 +30,7 @@ class GeminiClient:
 
     def _generate_with_history(self, history: list, prompt: str, system_instruction: str = None) -> str:
         try:
-            model = model = genai.GenerativeModel(
+            model = genai.GenerativeModel(
                 GEMINI_MODEL,
                 system_instruction=system_instruction
             )
@@ -50,6 +50,7 @@ class GeminiClient:
         lecture = context.get("lecture", "")
         mode = context.get("mode", "daily")
         weak_topics = ", ".join(context.get("weak_topics", [])) or "none"
+        preferences = context.get("preferences", "")
         history = context.get("history", [])
 
         system = prompts.SYSTEM_PROMPT.format(
@@ -57,6 +58,7 @@ class GeminiClient:
             lecture=lecture or "not set",
             mode=mode,
             weak_topics=weak_topics,
+            preferences=preferences or "none",
         )
 
         raw = self._generate_with_history(history, user_text, system)
@@ -95,6 +97,14 @@ class GeminiClient:
                 val = stripped[len("WEAK_TOPIC:"):].strip()
                 if val:
                     state_updates.setdefault("weak_topics", []).append(val)
+            elif stripped.startswith("PREFERENCE:"):
+                val = stripped[len("PREFERENCE:"):].strip()
+                if val and "=" in val:
+                    key, _, value = val.partition("=")
+                    state_updates.setdefault("preferences", []).append((key.strip(), value.strip()))
+                elif val and ":" in val:
+                    key, _, value = val.partition(":")
+                    state_updates.setdefault("preferences", []).append((key.strip(), value.strip()))
             else:
                 clean_lines.append(line)
 

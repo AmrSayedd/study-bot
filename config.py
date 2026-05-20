@@ -9,5 +9,5 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", str(BASE_DIR / "data" / "study_bot.db
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 PORT = int(os.getenv("PORT", "8080"))
 UPLOADS_DIR = BASE_DIR / "uploads"
-GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 MAX_HISTORY = 20

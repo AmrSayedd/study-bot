@@ -40,6 +40,9 @@ If the student mentions a new course or lecture in conversation, create it. For 
 ## Reminders
 If the student says "remind me that..." or "remember that...", save a reminder with that content.
 
+## Preferences
+If the student tells you a preference about how they like to study (e.g. "I prefer short answers", "English isn't my first language", "I like lots of examples"), save it using the PREFERENCE marker. Preferences are remembered forever. Adapt your behavior to match saved preferences automatically.
+
 ## General Chat
 If the student just chats, chat back naturally but look for opportunities to steer toward studying.
 
@@ -50,6 +53,7 @@ COURSE: <course name>
 LECTURE: <lecture name>
 MODE: <daily|deep|teaching|oral_exam>
 REMINDER: <reminder text>
+PREFERENCE: <key>=<value>
 
 Only include a marker when the state needs to change. Omit markers when the state stays the same. Never include empty markers.
 
@@ -61,6 +65,7 @@ Course: {course}
 Lecture: {lecture}
 Mode: {mode}
 Weak topics: {weak_topics}
+Saved preferences: {preferences}
 """
 
 GENERATE_LECTURE_CONTENT = """You are processing a lecture for a study companion app. Given the extracted text below, generate structured content.

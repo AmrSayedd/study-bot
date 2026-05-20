@@ -249,6 +249,29 @@ class Database:
             "weak_topics": [w["topic"] for w in weak],
         }
 
+    # -- User Preferences --
+    def set_preference(self, user_id: int, key: str, value: str):
+        self.conn.execute(
+            """INSERT INTO user_preferences (user_id, pref_key, pref_value)
+               VALUES (?, ?, ?)
+               ON CONFLICT(user_id, pref_key) DO UPDATE SET pref_value = ?, updated_at = CURRENT_TIMESTAMP""",
+            (user_id, key, value, value)
+        )
+        self.conn.commit()
+
+    def get_preferences(self, user_id: int) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT pref_key, pref_value FROM user_preferences WHERE user_id = ? ORDER BY updated_at DESC",
+            (user_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_preferences_as_text(self, user_id: int) -> str:
+        prefs = self.get_preferences(user_id)
+        if not prefs:
+            return "none"
+        return "; ".join(f"{p['pref_key']}: {p['pref_value']}" for p in prefs)
+
     # -- Conversation Sessions --
     def get_active_session(self, user_id: int) -> Optional[dict]:
         row = self.conn.execute(
@@ -300,3 +323,90 @@ class Database:
             (user_id,)
         )
         self.conn.commit()
+
+    # -- Consolidated chat context (1 read call for the handler) --
+    def get_chat_context(self, user_id: int) -> dict:
+        session = self.get_or_create_session(user_id)
+        course = ""
+        lecture = ""
+        if session.get("current_course_id"):
+            c = self.get_course(session["current_course_id"])
+            if c:
+                course = c["title"]
+        if session.get("current_lecture_id"):
+            l = self.get_lecture(session["current_lecture_id"])
+            if l:
+                lecture = l["title"]
+        weak = self.get_weak_topics(user_id)
+        prefs = self.get_preferences_as_text(user_id)
+        reminders = self.get_due_reminders(user_id)
+        return {
+            "session": session,
+            "course": course,
+            "lecture": lecture,
+            "mode": session.get("revision_mode", "daily"),
+            "weak_topics": [w["topic"] for w in weak],
+            "preferences": prefs,
+            "reminders": reminders,
+            "history": json.loads(session.get("history", "[]")),
+        }
+
+    def save_chat_interaction(self, user_id: int, user_text: str,
+                               reply: str, updates: dict):
+        self.conn.execute("BEGIN")
+        try:
+            if "course" in updates:
+                c = self.find_or_create_course(updates["course"], user_id)
+                self.conn.execute(
+                    "UPDATE conversation_sessions SET current_course_id = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                    (c["id"], user_id)
+                )
+            if "lecture" in updates:
+                session = self.get_active_session(user_id)
+                cid = session["current_course_id"] if session else None
+                if not cid and "course" in updates:
+                    c = self.find_or_create_course(updates["course"], user_id)
+                    cid = c["id"]
+                if cid:
+                    l = self.find_or_create_lecture(cid, updates["lecture"])
+                    self.conn.execute(
+                        "UPDATE conversation_sessions SET current_lecture_id = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                        (l["id"], user_id)
+                    )
+            if "mode" in updates:
+                self.conn.execute(
+                    "UPDATE conversation_sessions SET revision_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                    (updates["mode"], user_id)
+                )
+            if "reminder" in updates:
+                self.conn.execute(
+                    """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
+                       VALUES (?, ?, ?, ?, datetime('now', '+1 day'))""",
+                    (user_id, updates["reminder"],
+                     updates.get("course_title", ""),
+                     updates.get("lecture_title", ""))
+                )
+            if "preferences" in updates:
+                for key, value in updates["preferences"]:
+                    self.conn.execute(
+                        """INSERT INTO user_preferences (user_id, pref_key, pref_value)
+                           VALUES (?, ?, ?) ON CONFLICT(user_id, pref_key)
+                           DO UPDATE SET pref_value = ?, updated_at = CURRENT_TIMESTAMP""",
+                        (user_id, key, value, value)
+                    )
+
+            session_data = self.get_active_session(user_id)
+            history = json.loads(session_data["history"]) if session_data else []
+            history.append({"role": "user", "text": user_text})
+            history.append({"role": "assistant", "text": reply})
+            if len(history) > 20:
+                history = history[-20:]
+            self.conn.execute(
+                "UPDATE conversation_sessions SET history = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                (json.dumps(history), user_id)
+            )
+
+            self.conn.execute("COMMIT")
+        except Exception:
+            self.conn.execute("ROLLBACK")
+            raise
