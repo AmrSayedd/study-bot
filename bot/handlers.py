@@ -10,6 +10,7 @@ from ai.gemini_client import GeminiClient
 logger = logging.getLogger(__name__)
 
 MAX_MSG_LEN = 4000
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"}
 
 
 def split_message(text: str) -> list[str]:
@@ -76,6 +77,49 @@ class BotHandlers:
 
         await self._reply(update, reply)
 
+    async def _handle_image(self, update: Update, file_path: str, caption: str):
+        user_id = update.effective_user.id
+        ctx = self.db.get_chat_context(user_id)
+
+        reminder_msg = ""
+        if ctx["reminders"]:
+            lines = ["\U0001F4CC *Here are your pending reminders:*"]
+            for r in ctx["reminders"]:
+                tag = f" [{r['course']}" + (f" \u2192 {r['lecture']}]" if r["lecture"] else "]") if r["course"] else ""
+                lines.append(f"\u2022 {r['content']}{tag}")
+            reminder_msg = "\n".join(lines)
+            for r in ctx["reminders"]:
+                self.db.update_reminder_schedule(r["id"], True)
+
+        response_data = self.ai.chat_with_image(file_path, caption or "", ctx)
+        reply = response_data["text"]
+        updates = response_data["state_updates"]
+
+        if reminder_msg:
+            reply = f"{reminder_msg}\n\n{reply}"
+
+        user_text = caption or "[Sent an image]"
+        updates["course_title"] = ctx["course"]
+        updates["lecture_title"] = ctx["lecture"]
+
+        self.db.save_chat_interaction(user_id, user_text, reply, updates)
+
+        await self._reply(update, reply)
+
+    async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        photo = update.message.photo[-1]
+        caption = update.message.caption or ""
+        try:
+            file = await photo.get_file()
+            file_bytes = await file.download_as_bytearray()
+            ext = ".jpg"
+            file_name = f"photo_{update.message.message_id}{ext}"
+            file_path = self.processor.save_file(file_name, bytes(file_bytes))
+            await self._handle_image(update, file_path, caption)
+        except Exception as e:
+            logger.error(f"Photo error: {e}")
+            await update.message.reply_text("Sorry, I couldn't process that image.")
+
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         doc = update.message.document
@@ -85,8 +129,20 @@ class BotHandlers:
             return
 
         ext = os.path.splitext(doc.file_name)[1].lower()
+
+        if ext in IMAGE_EXTS:
+            try:
+                file = await doc.get_file()
+                file_bytes = await file.download_as_bytearray()
+                file_path = self.processor.save_file(doc.file_name, bytes(file_bytes))
+                await self._handle_image(update, file_path, update.message.caption or "")
+            except Exception as e:
+                logger.error(f"Image document error: {e}")
+                await update.message.reply_text("Sorry, I couldn't process that image.")
+            return
+
         if ext not in (".pdf", ".txt", ".md"):
-            await update.message.reply_text("I can only process PDF, TXT, and Markdown files.")
+            await update.message.reply_text("I can only process PDF, TXT, Markdown, and image files.")
             return
 
         await update.message.reply_text("Downloading your file...")

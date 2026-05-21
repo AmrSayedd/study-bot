@@ -129,14 +129,15 @@ async def chat(request: Request):
     }
 
 
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"}
+
+
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     if not file.filename:
         return JSONResponse({"error": "No filename"}, status_code=400)
 
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in (".pdf", ".txt", ".md"):
-        return JSONResponse({"error": "Only PDF, TXT, MD files supported"}, status_code=400)
 
     try:
         content = await file.read()
@@ -145,6 +146,28 @@ async def upload_file(file: UploadFile = File(...)):
         file_path = os.path.join(UPLOADS_DIR, file.filename)
         with open(file_path, "wb") as f:
             f.write(content)
+
+        if ext in IMAGE_EXTS:
+            ctx = db.get_chat_context(TEST_USER_ID)
+            response_data = ai.chat_with_image(file_path, "", ctx)
+            reply = response_data["text"]
+            updates = response_data["state_updates"]
+            updates["course_title"] = ctx["course"]
+            updates["lecture_title"] = ctx["lecture"]
+
+            db.save_chat_interaction(TEST_USER_ID, "[Sent an image]", reply, updates)
+
+            new_course = updates.get("course", ctx["course"])
+            new_lecture = updates.get("lecture", ctx["lecture"])
+            new_mode = updates.get("mode", ctx["mode"])
+
+            return {
+                "reply": reply,
+                "state": {"course": new_course, "lecture": new_lecture, "mode": new_mode},
+            }
+
+        if ext not in (".pdf", ".txt", ".md"):
+            return JSONResponse({"error": "Only PDF, TXT, MD, and image files supported"}, status_code=400)
 
         extracted = processor.extract_text(file_path)
 

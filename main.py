@@ -50,6 +50,9 @@ async def startup():
         filters.TEXT & ~filters.COMMAND, handlers.handle_message
     ))
     ptb_app.add_handler(MessageHandler(
+        filters.PHOTO, handlers.handle_photo
+    ))
+    ptb_app.add_handler(MessageHandler(
         filters.Document.ALL, handlers.handle_document
     ))
 

@@ -45,6 +45,50 @@ class GeminiClient:
             logger.error(f"Gemini chat error: {e}")
             return ""
 
+    def chat_with_image(self, image_path: str, caption: str, context: dict) -> dict:
+        try:
+            import PIL.Image
+        except ImportError:
+            return {"text": "Image processing requires Pillow. Install it with: pip install Pillow", "state_updates": {}}
+
+        course = context.get("course", "")
+        lecture = context.get("lecture", "")
+        mode = context.get("mode", "daily")
+        weak_topics = ", ".join(context.get("weak_topics", [])) or "none"
+        preferences = context.get("preferences", "")
+        history = context.get("history", [])
+
+        system = prompts.SYSTEM_PROMPT.format(
+            course=course or "not set",
+            lecture=lecture or "not set",
+            mode=mode,
+            weak_topics=weak_topics,
+            preferences=preferences or "none",
+        )
+
+        try:
+            model = genai.GenerativeModel(GEMINI_MODEL, system_instruction=system)
+
+            contents = []
+            for msg in history:
+                role = "user" if msg["role"] == "user" else "model"
+                contents.append({"role": role, "parts": [msg["text"]]})
+
+            img = PIL.Image.open(image_path)
+            parts = [img]
+            if caption and caption.strip():
+                parts.append(caption.strip())
+            contents.append({"role": "user", "parts": parts})
+
+            response = model.generate_content(contents)
+            raw = response.text
+        except Exception as e:
+            logger.error(f"Gemini image chat error: {e}")
+            return {"text": "Sorry, I couldn't process that image.", "state_updates": {}}
+
+        text, state_updates = self._parse_response(raw)
+        return {"text": text, "state_updates": state_updates}
+
     def chat(self, user_text: str, context: dict) -> dict:
         course = context.get("course", "")
         lecture = context.get("lecture", "")

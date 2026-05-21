@@ -17,7 +17,14 @@ except ImportError:
     HAS_PDFPLUMBER = False
 
 
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"}
+
+
 class LectureProcessor:
+    @staticmethod
+    def is_image(file_path: str) -> bool:
+        return os.path.splitext(file_path)[1].lower() in IMAGE_EXTS
+
     @staticmethod
     def extract_text(file_path: str) -> str:
         ext = os.path.splitext(file_path)[1].lower()
