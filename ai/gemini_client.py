@@ -1,28 +1,30 @@
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import json
 import re
 import logging
+import io
+import PIL.Image
 from . import prompts
 from config import GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
-genai.configure(api_key=GEMINI_API_KEY)
-
 
 class GeminiClient:
     def __init__(self):
-        self.model = genai.GenerativeModel(GEMINI_MODEL)
+        self.client = genai.Client(api_key=GEMINI_API_KEY)
 
     def _generate(self, prompt: str, system_instruction: str = None) -> str:
         try:
-            model = self.model
+            config = None
             if system_instruction:
-                model = genai.GenerativeModel(
-                    GEMINI_MODEL,
-                    system_instruction=system_instruction
-                )
-            response = model.generate_content(prompt)
+                config = types.GenerateContentConfig(system_instruction=system_instruction)
+            response = self.client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=config,
+            )
             return response.text
         except Exception as e:
             logger.error(f"Gemini API error: {e}")
@@ -30,27 +32,33 @@ class GeminiClient:
 
     def _generate_with_history(self, history: list, prompt: str, system_instruction: str = None) -> str:
         try:
-            model = genai.GenerativeModel(
-                GEMINI_MODEL,
-                system_instruction=system_instruction
-            )
             contents = []
             for msg in history:
                 role = "user" if msg["role"] == "user" else "model"
-                contents.append({"role": role, "parts": [msg["text"]]})
-            contents.append({"role": "user", "parts": [prompt]})
-            response = model.generate_content(contents)
+                contents.append(types.Content(
+                    role=role,
+                    parts=[types.Part.from_text(msg["text"])]
+                ))
+            contents.append(types.Content(
+                role="user",
+                parts=[types.Part.from_text(prompt)]
+            ))
+
+            config = None
+            if system_instruction:
+                config = types.GenerateContentConfig(system_instruction=system_instruction)
+
+            response = self.client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=config,
+            )
             return response.text
         except Exception as e:
             logger.error(f"Gemini chat error: {e}")
             return ""
 
     def chat_with_image(self, image_path: str, caption: str, context: dict) -> dict:
-        try:
-            import PIL.Image
-        except ImportError:
-            return {"text": "Image processing requires Pillow. Install it with: pip install Pillow", "state_updates": {}}
-
         course = context.get("course", "")
         lecture = context.get("lecture", "")
         mode = context.get("mode", "daily")
@@ -67,20 +75,30 @@ class GeminiClient:
         )
 
         try:
-            model = genai.GenerativeModel(GEMINI_MODEL, system_instruction=system)
-
             contents = []
             for msg in history:
                 role = "user" if msg["role"] == "user" else "model"
-                contents.append({"role": role, "parts": [msg["text"]]})
+                contents.append(types.Content(
+                    role=role,
+                    parts=[types.Part.from_text(msg["text"])]
+                ))
 
             img = PIL.Image.open(image_path)
-            parts = [img]
-            if caption and caption.strip():
-                parts.append(caption.strip())
-            contents.append({"role": "user", "parts": parts})
+            buffer = io.BytesIO()
+            img.save(buffer, format=img.format or "PNG")
+            img_bytes = buffer.getvalue()
+            mime = f"image/{img.format.lower()}" if img.format else "image/png"
 
-            response = model.generate_content(contents)
+            user_parts = [types.Part.from_bytes(data=img_bytes, mime_type=mime)]
+            if caption and caption.strip():
+                user_parts.append(types.Part.from_text(caption.strip()))
+            contents.append(types.Content(role="user", parts=user_parts))
+
+            response = self.client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=types.GenerateContentConfig(system_instruction=system),
+            )
             raw = response.text
         except Exception as e:
             logger.error(f"Gemini image chat error: {e}")

@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 import logging
+from contextlib import asynccontextmanager
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -21,60 +22,55 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Module-level overrides (set by CLI args before uvicorn starts)
 _override_token = ""
 _override_webhook = ""
 
-app = FastAPI(title="Study Companion Bot")
 db = Database()
 ai = GeminiClient()
 handlers = BotHandlers(db, ai)
 ptb_app: Application = None
 
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global ptb_app
     logger.info("Starting up...")
 
     token = os.getenv("TELEGRAM_BOT_TOKEN") or _override_token or CFG_TOKEN
     webhook = os.getenv("WEBHOOK_URL") or _override_webhook or CFG_WEBHOOK
 
-    if not token:
-        logger.error("No TELEGRAM_BOT_TOKEN provided.")
-        return
+    if token:
+        ptb_app = Application.builder().token(token).build()
 
-    ptb_app = Application.builder().token(token).build()
+        ptb_app.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND, handlers.handle_message
+        ))
+        ptb_app.add_handler(MessageHandler(
+            filters.PHOTO, handlers.handle_photo
+        ))
+        ptb_app.add_handler(MessageHandler(
+            filters.Document.ALL, handlers.handle_document
+        ))
 
-    ptb_app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND, handlers.handle_message
-    ))
-    ptb_app.add_handler(MessageHandler(
-        filters.PHOTO, handlers.handle_photo
-    ))
-    ptb_app.add_handler(MessageHandler(
-        filters.Document.ALL, handlers.handle_document
-    ))
+        await ptb_app.initialize()
+        await ptb_app.start()
 
-    await ptb_app.initialize()
-    await ptb_app.start()
-
-    if webhook:
-        webhook_url = f"{webhook.rstrip('/')}/webhook"
-        await ptb_app.bot.set_webhook(webhook_url)
-        logger.info(f"Webhook set to {webhook_url}")
+        if webhook:
+            webhook_url = f"{webhook.rstrip('/')}/webhook"
+            await ptb_app.bot.set_webhook(webhook_url)
+            logger.info(f"Webhook set to {webhook_url}")
     else:
-        logger.info("No webhook URL configured. Bot will not receive updates via webhook.")
+        logger.error("No TELEGRAM_BOT_TOKEN provided.")
 
     logger.info("Startup complete.")
+    yield
 
-
-@app.on_event("shutdown")
-async def shutdown():
-    global ptb_app
     if ptb_app:
         await ptb_app.stop()
         await ptb_app.shutdown()
+
+
+app = FastAPI(title="Study Companion Bot", lifespan=lifespan)
 
 
 @app.post("/webhook")
