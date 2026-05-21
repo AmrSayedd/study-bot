@@ -10,8 +10,9 @@ class Database:
     def __init__(self):
         import os
         os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
-        self.conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        self.conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False, isolation_level=None)
         self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA journal_mode=WAL")
         self._init_tables()
 
     def _init_tables(self):
@@ -353,60 +354,65 @@ class Database:
 
     def save_chat_interaction(self, user_id: int, user_text: str,
                                reply: str, updates: dict):
-        self.conn.execute("BEGIN")
-        try:
-            if "course" in updates:
-                c = self.find_or_create_course(updates["course"], user_id)
-                self.conn.execute(
-                    "UPDATE conversation_sessions SET current_course_id = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
-                    (c["id"], user_id)
-                )
-            if "lecture" in updates:
-                session = self.get_active_session(user_id)
-                cid = session["current_course_id"] if session else None
-                if not cid and "course" in updates:
-                    c = self.find_or_create_course(updates["course"], user_id)
-                    cid = c["id"]
-                if cid:
-                    l = self.find_or_create_lecture(cid, updates["lecture"])
-                    self.conn.execute(
-                        "UPDATE conversation_sessions SET current_lecture_id = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
-                        (l["id"], user_id)
-                    )
-            if "mode" in updates:
-                self.conn.execute(
-                    "UPDATE conversation_sessions SET revision_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
-                    (updates["mode"], user_id)
-                )
-            if "reminder" in updates:
-                self.conn.execute(
-                    """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
-                       VALUES (?, ?, ?, ?, datetime('now', '+1 day'))""",
-                    (user_id, updates["reminder"],
-                     updates.get("course_title", ""),
-                     updates.get("lecture_title", ""))
-                )
-            if "preferences" in updates:
-                for key, value in updates["preferences"]:
-                    self.conn.execute(
-                        """INSERT INTO user_preferences (user_id, pref_key, pref_value)
-                           VALUES (?, ?, ?) ON CONFLICT(user_id, pref_key)
-                           DO UPDATE SET pref_value = ?, updated_at = CURRENT_TIMESTAMP""",
-                        (user_id, key, value, value)
-                    )
+        # Read current session state first
+        session = self.get_or_create_session(user_id)
+        history = json.loads(session.get("history", "[]"))
+        cid = session.get("current_course_id")
+        lid = session.get("current_lecture_id")
 
-            session_data = self.get_active_session(user_id)
-            history = json.loads(session_data["history"]) if session_data else []
-            history.append({"role": "user", "text": user_text})
-            history.append({"role": "assistant", "text": reply})
-            if len(history) > 20:
-                history = history[-20:]
+        # Resolve new state from AI markers
+        new_cid = cid
+        new_lid = lid
+        if "course" in updates:
+            c = self.find_or_create_course(updates["course"], user_id)
+            new_cid = c["id"]
+        if "lecture" in updates:
+            cc = new_cid or cid
+            if cc:
+                l = self.find_or_create_lecture(cc, updates["lecture"])
+                new_lid = l["id"]
+
+        # Append to conversation history
+        history.append({"role": "user", "text": user_text})
+        history.append({"role": "assistant", "text": reply})
+        if len(history) > 20:
+            history = history[-20:]
+
+        # Build single UPDATE for session
+        set_clauses = ["updated_at = CURRENT_TIMESTAMP"]
+        params = []
+        if new_cid != cid:
+            set_clauses.insert(0, "current_course_id = ?")
+            params.insert(0, new_cid)
+        if new_lid != lid:
+            set_clauses.insert(0, "current_lecture_id = ?")
+            params.insert(0, new_lid)
+        if "mode" in updates:
+            set_clauses.append("revision_mode = ?")
+            params.append(updates["mode"])
+        set_clauses.append("history = ?")
+        params.append(json.dumps(history))
+        params.append(user_id)
+
+        self.conn.execute(
+            f"UPDATE conversation_sessions SET {', '.join(set_clauses)} WHERE user_id = ?",
+            params
+        )
+
+        # Side effects (reminders, preferences)
+        if "reminder" in updates:
             self.conn.execute(
-                "UPDATE conversation_sessions SET history = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
-                (json.dumps(history), user_id)
+                """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
+                   VALUES (?, ?, ?, ?, datetime('now', '+1 day'))""",
+                (user_id, updates["reminder"],
+                 updates.get("course_title", ""),
+                 updates.get("lecture_title", ""))
             )
-
-            self.conn.execute("COMMIT")
-        except Exception:
-            self.conn.execute("ROLLBACK")
-            raise
+        if "preferences" in updates:
+            for key, value in updates["preferences"]:
+                self.conn.execute(
+                    """INSERT INTO user_preferences (user_id, pref_key, pref_value)
+                       VALUES (?, ?, ?) ON CONFLICT(user_id, pref_key)
+                       DO UPDATE SET pref_value = ?, updated_at = CURRENT_TIMESTAMP""",
+                    (user_id, key, value, value)
+                )
