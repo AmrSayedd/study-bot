@@ -2,13 +2,18 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import json
 import os
+import re
 from typing import Optional
 from .models_postgres import ALL_TABLES
 
 
 class Database:
     def __init__(self):
-        self.conn = psycopg2.connect(os.environ["DATABASE_URL"])
+        dsn = os.environ["DATABASE_URL"]
+        if "sslmode=" not in dsn and not re.search(r'@localhost[:/]', dsn):
+            sep = "&" if "?" in dsn else "?"
+            dsn = f"{dsn}{sep}sslmode=require"
+        self.conn = psycopg2.connect(dsn)
         self.conn.autocommit = True
         self._init_tables()
 
