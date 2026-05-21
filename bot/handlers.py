@@ -42,8 +42,11 @@ class BotHandlers:
         self.revision_service = RevisionService(db, ai)
 
     async def _reply(self, update: Update, text: str):
+        if not text:
+            return
         for chunk in split_message(text):
-            await update.message.reply_text(chunk)
+            if chunk:
+                await update.message.reply_text(chunk)
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
@@ -66,6 +69,10 @@ class BotHandlers:
         response_data = self.ai.chat(text, ctx)
         reply = response_data["text"]
         updates = response_data["state_updates"]
+
+        if not reply:
+            await update.message.reply_text("Sorry, I couldn't process that.")
+            return
 
         if reminder_msg:
             reply = f"{reminder_msg}\n\n{reply}"

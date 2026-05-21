@@ -37,11 +37,11 @@ class GeminiClient:
                 role = "user" if msg["role"] == "user" else "model"
                 contents.append(types.Content(
                     role=role,
-                    parts=[types.Part.from_text(msg["text"])]
+                    parts=[types.Part(text=msg["text"])]
                 ))
             contents.append(types.Content(
                 role="user",
-                parts=[types.Part.from_text(prompt)]
+                parts=[types.Part(text=prompt)]
             ))
 
             config = None
@@ -80,7 +80,7 @@ class GeminiClient:
                 role = "user" if msg["role"] == "user" else "model"
                 contents.append(types.Content(
                     role=role,
-                    parts=[types.Part.from_text(msg["text"])]
+                    parts=[types.Part(text=msg["text"])]
                 ))
 
             img = PIL.Image.open(image_path)
@@ -89,9 +89,9 @@ class GeminiClient:
             img_bytes = buffer.getvalue()
             mime = f"image/{img.format.lower()}" if img.format else "image/png"
 
-            user_parts = [types.Part.from_bytes(data=img_bytes, mime_type=mime)]
+            user_parts = [types.Part(inline_data=types.Blob(mime_type=mime, data=img_bytes))]
             if caption and caption.strip():
-                user_parts.append(types.Part.from_text(caption.strip()))
+                user_parts.append(types.Part(text=caption.strip()))
             contents.append(types.Content(role="user", parts=user_parts))
 
             response = self.client.models.generate_content(
