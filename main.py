@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import uvicorn
 from fastapi import FastAPI, Request
 from telegram import Update
-from telegram.ext import Application, CallbackContext, MessageHandler, filters
+from telegram.ext import Application, MessageHandler, filters
 
 from config import TELEGRAM_BOT_TOKEN as CFG_TOKEN, WEBHOOK_URL as CFG_WEBHOOK, PORT as CFG_PORT
 from database.db import Database
@@ -29,33 +29,6 @@ db = Database()
 ai = GeminiClient()
 handlers = BotHandlers(db, ai)
 ptb_app: Application = None
-
-
-async def push_due_reminders(context: CallbackContext):
-    try:
-        user_ids = db.get_all_users_with_due_reminders()
-        for uid in user_ids:
-            reminders = db.get_due_reminders(uid)
-            if not reminders:
-                continue
-            lines = ["\U0001F4CC *Your pending reminders:*"]
-            for r in reminders:
-                tag = ""
-                if r["course"]:
-                    tag = f" [{r['course']}"
-                    if r["lecture"]:
-                        tag += f" \u2192 {r['lecture']}"
-                    tag += "]"
-                lines.append(f"\u2022 {r['content']}{tag}")
-            msg = "\n".join(lines)
-            try:
-                await context.bot.send_message(chat_id=uid, text=msg, parse_mode="Markdown")
-            except Exception as e:
-                logger.warning(f"Failed to push reminder to user {uid}: {e}")
-            for r in reminders:
-                db.update_reminder_schedule(r["id"], True)
-    except Exception as e:
-        logger.error(f"Reminder push error: {e}")
 
 
 @asynccontextmanager
@@ -81,10 +54,6 @@ async def lifespan(app: FastAPI):
 
         await ptb_app.initialize()
         await ptb_app.start()
-
-        if ptb_app.job_queue:
-            ptb_app.job_queue.run_repeating(push_due_reminders, interval=60, first=10)
-            logger.info("Reminder push job scheduled (every 60s)")
 
         if webhook:
             webhook_url = f"{webhook.rstrip('/')}/webhook"

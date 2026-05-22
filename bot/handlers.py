@@ -4,6 +4,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from services.lecture_processor import LectureProcessor
 from services.revision_service import RevisionService
+from services.doc_reader import extract_urls, fetch_url
 from database.db import Database
 from ai.gemini_client import GeminiClient
 
@@ -46,7 +47,7 @@ class BotHandlers:
             return
         for chunk in split_message(text):
             if chunk:
-                await update.message.reply_text(chunk)
+                await update.message.reply_text(chunk, parse_mode="Markdown")
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
@@ -55,6 +56,16 @@ class BotHandlers:
             return
 
         ctx = self.db.get_chat_context(user_id)
+
+        urls = extract_urls(text)
+        doc_text = ""
+        for url in urls[:3]:
+            fetched = fetch_url(url)
+            if fetched:
+                doc_text += f"\n--- Content from {url} ---\n{fetched}\n"
+
+        if doc_text:
+            text = f"{text}\n\n[The user shared the following documentation from a URL. Read and understand it to answer their question.]\n{doc_text}"
 
         reminder_msg = ""
         if ctx["reminders"]:
