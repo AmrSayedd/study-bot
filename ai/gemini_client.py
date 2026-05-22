@@ -151,6 +151,10 @@ class GeminiClient:
                 val = stripped[len("MODE:"):].strip().lower()
                 if val in ("daily", "deep", "teaching", "oral_exam"):
                     state_updates["mode"] = val
+            elif stripped.startswith("REMINDER_AT:"):
+                val = stripped[len("REMINDER_AT:"):].strip()
+                if val:
+                    state_updates["reminder_at"] = val
             elif stripped.startswith("REMINDER:"):
                 val = stripped[len("REMINDER:"):].strip()
                 if val:

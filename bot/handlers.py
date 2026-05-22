@@ -67,13 +67,7 @@ class BotHandlers:
         if doc_text:
             text = f"{text}\n\n[The user shared the following documentation from a URL. Read and understand it to answer their question.]\n{doc_text}"
 
-        reminder_msg = ""
         if ctx["reminders"]:
-            lines = ["\U0001F4CC *Here are your pending reminders:*"]
-            for r in ctx["reminders"]:
-                tag = f" [{r['course']}" + (f" \u2192 {r['lecture']}]" if r["lecture"] else "]") if r["course"] else ""
-                lines.append(f"\u2022 {r['content']}{tag}")
-            reminder_msg = "\n".join(lines)
             for r in ctx["reminders"]:
                 self.db.update_reminder_schedule(r["id"], True)
 
@@ -84,9 +78,6 @@ class BotHandlers:
         if not reply:
             await update.message.reply_text("Sorry, I couldn't process that.")
             return
-
-        if reminder_msg:
-            reply = f"{reminder_msg}\n\n{reply}"
 
         updates["course_title"] = ctx["course"]
         updates["lecture_title"] = ctx["lecture"]
@@ -99,22 +90,13 @@ class BotHandlers:
         user_id = update.effective_user.id
         ctx = self.db.get_chat_context(user_id)
 
-        reminder_msg = ""
         if ctx["reminders"]:
-            lines = ["\U0001F4CC *Here are your pending reminders:*"]
-            for r in ctx["reminders"]:
-                tag = f" [{r['course']}" + (f" \u2192 {r['lecture']}]" if r["lecture"] else "]") if r["course"] else ""
-                lines.append(f"\u2022 {r['content']}{tag}")
-            reminder_msg = "\n".join(lines)
             for r in ctx["reminders"]:
                 self.db.update_reminder_schedule(r["id"], True)
 
         response_data = self.ai.chat_with_image(file_path, caption or "", ctx)
         reply = response_data["text"]
         updates = response_data["state_updates"]
-
-        if reminder_msg:
-            reply = f"{reminder_msg}\n\n{reply}"
 
         user_text = caption or "[Sent an image]"
         updates["course_title"] = ctx["course"]

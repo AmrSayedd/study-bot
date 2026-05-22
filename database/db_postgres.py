@@ -168,13 +168,21 @@ class Database:
 
     # -- Reminders --
     def create_reminder(self, user_id: int, content: str,
-                        course: str = None, lecture: str = None) -> dict:
+                        course: str = None, lecture: str = None,
+                        reminder_at: str = None) -> dict:
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
-                   VALUES (%s, %s, %s, %s, NOW() + INTERVAL '1 day') RETURNING *""",
-                (user_id, content, course, lecture)
-            )
+            if reminder_at:
+                cur.execute(
+                    """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
+                       VALUES (%s, %s, %s, %s, %s) RETURNING *""",
+                    (user_id, content, course, lecture, reminder_at)
+                )
+            else:
+                cur.execute(
+                    """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
+                       VALUES (%s, %s, %s, %s, NOW() + INTERVAL '1 day') RETURNING *""",
+                    (user_id, content, course, lecture)
+                )
             return dict(cur.fetchone())
 
     def get_due_reminders(self, user_id: int) -> list[dict]:
@@ -184,6 +192,13 @@ class Database:
                 (user_id,)
             )
             return [dict(r) for r in cur.fetchall()]
+
+    def get_all_users_with_due_reminders(self) -> list[int]:
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT DISTINCT user_id FROM reminders WHERE next_review_at <= NOW()"
+            )
+            return [r["user_id"] for r in cur.fetchall()]
 
     def update_reminder_schedule(self, reminder_id: int, correct: bool):
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -403,14 +418,12 @@ class Database:
             )
 
         if "reminder" in updates:
-            with self.conn.cursor() as cur:
-                cur.execute(
-                    """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
-                       VALUES (%s, %s, %s, %s, NOW() + INTERVAL '1 day')""",
-                    (user_id, updates["reminder"],
-                     updates.get("course_title", ""),
-                     updates.get("lecture_title", ""))
-                )
+            self.create_reminder(
+                user_id, updates["reminder"],
+                updates.get("course_title", ""),
+                updates.get("lecture_title", ""),
+                reminder_at=updates.get("reminder_at")
+            )
         if "preferences" in updates:
             with self.conn.cursor() as cur:
                 for key, value in updates["preferences"]:

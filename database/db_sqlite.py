@@ -168,12 +168,20 @@ class Database:
 
     # -- Reminders --
     def create_reminder(self, user_id: int, content: str,
-                        course: str = None, lecture: str = None) -> dict:
-        cur = self.conn.execute(
-            """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
-               VALUES (?, ?, ?, ?, datetime('now', '+1 day'))""",
-            (user_id, content, course, lecture)
-        )
+                        course: str = None, lecture: str = None,
+                        reminder_at: str = None) -> dict:
+        if reminder_at:
+            cur = self.conn.execute(
+                """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (user_id, content, course, lecture, reminder_at)
+            )
+        else:
+            cur = self.conn.execute(
+                """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
+                   VALUES (?, ?, ?, ?, datetime('now', '+1 day'))""",
+                (user_id, content, course, lecture)
+            )
         self.conn.commit()
         row = self.conn.execute(
             "SELECT * FROM reminders WHERE id = ?", (cur.lastrowid,)
@@ -186,6 +194,12 @@ class Database:
             (user_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_all_users_with_due_reminders(self) -> list[int]:
+        rows = self.conn.execute(
+            "SELECT DISTINCT user_id FROM reminders WHERE next_review_at <= datetime('now')"
+        ).fetchall()
+        return [r["user_id"] for r in rows]
 
     def update_reminder_schedule(self, reminder_id: int, correct: bool):
         reminder = self.conn.execute(
@@ -396,12 +410,11 @@ class Database:
         )
 
         if "reminder" in updates:
-            self.conn.execute(
-                """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
-                   VALUES (?, ?, ?, ?, datetime('now', '+1 day'))""",
-                (user_id, updates["reminder"],
-                 updates.get("course_title", ""),
-                 updates.get("lecture_title", ""))
+            self.create_reminder(
+                user_id, updates["reminder"],
+                updates.get("course_title", ""),
+                updates.get("lecture_title", ""),
+                reminder_at=updates.get("reminder_at")
             )
         if "preferences" in updates:
             for key, value in updates["preferences"]:
