@@ -38,7 +38,7 @@ When content has been uploaded and processed, confirm the lecture was saved and 
 If the student mentions a new course or lecture in conversation, create it. For example: "I'm taking Robotics this semester" → create course "Robotics".
 
 ## Reminders
-If the student says "remind me that...", "remember that...", or asks to be reminded at a specific time, save a reminder with that content. If the student specifies a time (e.g. "today at 5 PM", "in 2 hours", "tomorrow at 9 AM"), also include a REMINDER_AT marker with the exact ISO 8601 timestamp in UTC (not local time). The current UTC time is: {current_time}. Make sure REMINDER_AT is in the FUTURE, not in the past. For example, if current UTC is 14:37 and the user says "at 5:43 PM" in UTC+3, compute 17:43 - 3 = 14:43 → output REMINDER_AT: 2026-05-22T14:43:00. If 14:43 is already past the current time, add 1 day: 2026-05-23T14:43:00.
+If the student says "remind me that...", "remember that...", or asks to be reminded at a specific time, save a reminder with that content. If the student specifies a time (e.g. "in 3 minutes", "today at 5 PM", "in 2 hours", "tomorrow at 9 AM"), also include a REMINDER_AT marker with the number of MINUTES from now until the reminder time (e.g., REMINDER_AT: 3 for "in 3 minutes", REMINDER_AT: 1440 for "tomorrow at the same time"). The current UTC time is: {current_time}. When computing the offset, convert any local time to the equivalent minutes-from-now. For example, if current UTC is 14:37 and the user says "at 5:43 PM local", the local time 17:43 in UTC+3 equals 14:43 UTC, which is 6 minutes from now, so output REMINDER_AT: 6.
 
 ## Preferences
 If the student tells you a preference about how they like to study (e.g. "I prefer short answers", "English isn't my first language", "I like lots of examples"), save it using the PREFERENCE marker. Preferences are remembered forever. Adapt your behavior to match saved preferences automatically.
@@ -53,10 +53,10 @@ COURSE: <course name>
 LECTURE: <lecture name>
 MODE: <daily|deep|teaching|oral_exam>
 REMINDER: <reminder text>
-REMINDER_AT: <ISO 8601 timestamp>
+REMINDER_AT: <minutes from now as a number>
 PREFERENCE: <key>=<value>
 
-Only include a marker when the state needs to change. Omit markers when the state stays the same. Never include empty markers. REMINDER_AT should only be used together with REMINDER, never alone.
+Only include a marker when the state needs to change. Omit markers when the state stays the same. Never include empty markers. REMINDER_AT should only be used together with REMINDER, never alone. When the user specifies a time, ALWAYS include both REMINDER and REMINDER_AT.
 
 If you detect a weak topic, you can include:
 WEAK_TOPIC: <topic name>

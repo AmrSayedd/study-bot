@@ -1,5 +1,6 @@
 import os
 import logging
+from datetime import datetime, timezone, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
 from services.lecture_processor import LectureProcessor
@@ -82,6 +83,19 @@ class BotHandlers:
         updates["course_title"] = ctx["course"]
         updates["lecture_title"] = ctx["lecture"]
 
+        if "reminder_at" in updates:
+            try:
+                minutes = int(updates["reminder_at"])
+                now = datetime.now(timezone.utc)
+                utc_time = now + timedelta(minutes=minutes)
+                if utc_time <= now:
+                    utc_time = now + timedelta(days=1)
+                updates["reminder_at"] = utc_time.strftime("%Y-%m-%d %H:%M:%S")
+                logger.info(f"Computed reminder_at: {updates['reminder_at']} (+{minutes} min from now)")
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid REMINDER_AT value: {updates.get('reminder_at')}, falling back to default")
+                del updates["reminder_at"]
+
         self.db.save_chat_interaction(user_id, text, reply, updates)
 
         await self._reply(update, reply)
@@ -101,6 +115,19 @@ class BotHandlers:
         user_text = caption or "[Sent an image]"
         updates["course_title"] = ctx["course"]
         updates["lecture_title"] = ctx["lecture"]
+
+        if "reminder_at" in updates:
+            try:
+                minutes = int(updates["reminder_at"])
+                now = datetime.now(timezone.utc)
+                utc_time = now + timedelta(minutes=minutes)
+                if utc_time <= now:
+                    utc_time = now + timedelta(days=1)
+                updates["reminder_at"] = utc_time.strftime("%Y-%m-%d %H:%M:%S")
+                logger.info(f"Computed reminder_at: {updates['reminder_at']} (+{minutes} min from now)")
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid REMINDER_AT value: {updates.get('reminder_at')}, falling back to default")
+                del updates["reminder_at"]
 
         self.db.save_chat_interaction(user_id, user_text, reply, updates)
 
