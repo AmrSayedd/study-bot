@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from google import genai
 from google.genai import types
 import json
@@ -65,6 +66,7 @@ class GeminiClient:
         weak_topics = ", ".join(context.get("weak_topics", [])) or "none"
         preferences = context.get("preferences", "")
         history = context.get("history", [])
+        current_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         system = prompts.SYSTEM_PROMPT.format(
             course=course or "not set",
@@ -72,6 +74,7 @@ class GeminiClient:
             mode=mode,
             weak_topics=weak_topics,
             preferences=preferences or "none",
+            current_time=current_utc,
         )
 
         try:
@@ -114,6 +117,7 @@ class GeminiClient:
         weak_topics = ", ".join(context.get("weak_topics", [])) or "none"
         preferences = context.get("preferences", "")
         history = context.get("history", [])
+        current_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         system = prompts.SYSTEM_PROMPT.format(
             course=course or "not set",
@@ -121,6 +125,7 @@ class GeminiClient:
             mode=mode,
             weak_topics=weak_topics,
             preferences=preferences or "none",
+            current_time=current_utc,
         )
 
         raw = self._generate_with_history(history, user_text, system)
