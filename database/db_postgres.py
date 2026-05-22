@@ -380,7 +380,7 @@ class Database:
             for w in words
         )
 
-    def add_to_history(self, user_id: int, role: str, text: str, max_history: int = 50):
+    def add_to_history(self, user_id: int, role: str, text: str, max_history: int = 20):
         session = self.get_or_create_session(user_id)
         history = json.loads(session.get("history", "[]"))
         history.append({"role": role, "text": text})
@@ -446,8 +446,8 @@ class Database:
 
         history.append({"role": "user", "text": user_text})
         history.append({"role": "assistant", "text": reply})
-        if len(history) > 50:
-            history = history[-50:]
+        if len(history) > 20:
+            history = history[-20:]
 
         set_clauses = ["updated_at = CURRENT_TIMESTAMP"]
         params = []
