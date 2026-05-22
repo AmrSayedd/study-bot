@@ -172,7 +172,7 @@ class Database:
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
-                   VALUES (%s, %s, %s, %s, NOW() + INTERVAL '1 day') RETURNING *""",
+                   VALUES (%s, %s, %s, %s, NOW()) RETURNING *""",
                 (user_id, content, course, lecture)
             )
             return dict(cur.fetchone())
@@ -184,6 +184,13 @@ class Database:
                 (user_id,)
             )
             return [dict(r) for r in cur.fetchall()]
+
+    def get_all_users_with_due_reminders(self) -> list[int]:
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT DISTINCT user_id FROM reminders WHERE next_review_at <= NOW()"
+            )
+            return [r["user_id"] for r in cur.fetchall()]
 
     def update_reminder_schedule(self, reminder_id: int, correct: bool):
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -406,7 +413,7 @@ class Database:
             with self.conn.cursor() as cur:
                 cur.execute(
                     """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
-                       VALUES (%s, %s, %s, %s, NOW() + INTERVAL '1 day')""",
+                       VALUES (%s, %s, %s, %s, NOW())""",
                     (user_id, updates["reminder"],
                      updates.get("course_title", ""),
                      updates.get("lecture_title", ""))

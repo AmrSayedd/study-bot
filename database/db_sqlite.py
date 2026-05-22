@@ -171,7 +171,7 @@ class Database:
                         course: str = None, lecture: str = None) -> dict:
         cur = self.conn.execute(
             """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
-               VALUES (?, ?, ?, ?, datetime('now', '+1 day'))""",
+               VALUES (?, ?, ?, ?, datetime('now'))""",
             (user_id, content, course, lecture)
         )
         self.conn.commit()
@@ -186,6 +186,12 @@ class Database:
             (user_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_all_users_with_due_reminders(self) -> list[int]:
+        rows = self.conn.execute(
+            "SELECT DISTINCT user_id FROM reminders WHERE next_review_at <= datetime('now')"
+        ).fetchall()
+        return [r["user_id"] for r in rows]
 
     def update_reminder_schedule(self, reminder_id: int, correct: bool):
         reminder = self.conn.execute(
@@ -398,7 +404,7 @@ class Database:
         if "reminder" in updates:
             self.conn.execute(
                 """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
-                   VALUES (?, ?, ?, ?, datetime('now', '+1 day'))""",
+                   VALUES (?, ?, ?, ?, datetime('now'))""",
                 (user_id, updates["reminder"],
                  updates.get("course_title", ""),
                  updates.get("lecture_title", ""))
