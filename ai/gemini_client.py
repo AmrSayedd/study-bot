@@ -160,10 +160,12 @@ class GeminiClient:
                 val = stripped[len("REMINDER_AT:"):].strip()
                 if val:
                     state_updates["reminder_at"] = val
+                    logger.info(f"REMINDER_AT extracted: {val}")
             elif stripped.startswith("REMINDER:"):
                 val = stripped[len("REMINDER:"):].strip()
                 if val:
                     state_updates["reminder"] = val
+                    logger.info(f"REMINDER extracted: {val}")
             elif stripped.startswith("WEAK_TOPIC:"):
                 val = stripped[len("WEAK_TOPIC:"):].strip()
                 if val:

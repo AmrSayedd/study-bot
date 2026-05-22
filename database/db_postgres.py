@@ -1,10 +1,13 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import json
+import logging
 import os
 import re
 from typing import Optional
 from .models_postgres import ALL_TABLES
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -172,18 +175,22 @@ class Database:
                         reminder_at: str = None) -> dict:
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
             if reminder_at:
+                logger.info(f"Creating reminder for user {user_id} with reminder_at={reminder_at}")
                 cur.execute(
                     """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
                        VALUES (%s, %s, %s, %s, %s) RETURNING *""",
                     (user_id, content, course, lecture, reminder_at)
                 )
             else:
+                logger.info(f"Creating reminder for user {user_id} with +1 day default")
                 cur.execute(
                     """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
                        VALUES (%s, %s, %s, %s, NOW() + INTERVAL '1 day') RETURNING *""",
                     (user_id, content, course, lecture)
                 )
-            return dict(cur.fetchone())
+            result = dict(cur.fetchone())
+            logger.info(f"Reminder stored: id={result['id']}, next_review_at={result['next_review_at']}")
+            return result
 
     def get_due_reminders(self, user_id: int) -> list[dict]:
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:

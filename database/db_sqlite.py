@@ -1,9 +1,13 @@
 import sqlite3
 import json
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from .models import ALL_TABLES
 from config import DATABASE_PATH
+
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -171,12 +175,14 @@ class Database:
                         course: str = None, lecture: str = None,
                         reminder_at: str = None) -> dict:
         if reminder_at:
+            logger.info(f"Creating reminder for user {user_id} with reminder_at={reminder_at}")
             cur = self.conn.execute(
                 """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
                    VALUES (?, ?, ?, ?, ?)""",
                 (user_id, content, course, lecture, reminder_at)
             )
         else:
+            logger.info(f"Creating reminder for user {user_id} with +1 day default")
             cur = self.conn.execute(
                 """INSERT INTO reminders (user_id, content, course, lecture, next_review_at)
                    VALUES (?, ?, ?, ?, datetime('now', '+1 day'))""",
@@ -186,7 +192,9 @@ class Database:
         row = self.conn.execute(
             "SELECT * FROM reminders WHERE id = ?", (cur.lastrowid,)
         ).fetchone()
-        return dict(row)
+        result = dict(row)
+        logger.info(f"Reminder stored: id={result['id']}, next_review_at={result['next_review_at']}")
+        return result
 
     def get_due_reminders(self, user_id: int) -> list[dict]:
         rows = self.conn.execute(
