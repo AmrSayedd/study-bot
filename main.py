@@ -34,10 +34,13 @@ ptb_app: Application = None
 async def push_due_reminders(context: CallbackContext):
     try:
         user_ids = db.get_all_users_with_due_reminders()
+        if user_ids:
+            logger.info(f"Found {len(user_ids)} users with due reminders")
         for uid in user_ids:
             reminders = db.get_due_reminders(uid)
             if not reminders:
                 continue
+            logger.info(f"Pushing {len(reminders)} reminders to user {uid}")
             lines = ["\U0001F4CC *Your pending reminders:*"]
             for r in reminders:
                 tag = ""
