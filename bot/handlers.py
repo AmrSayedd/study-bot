@@ -2,6 +2,7 @@ import os
 import logging
 from datetime import datetime, timezone, timedelta
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 from services.lecture_processor import LectureProcessor
 from services.revision_service import RevisionService
@@ -12,6 +13,7 @@ from ai.gemini_client import GeminiClient
 logger = logging.getLogger(__name__)
 
 MAX_MSG_LEN = 4000
+MAX_HISTORY = 50
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"}
 
 
@@ -48,7 +50,13 @@ class BotHandlers:
             return
         for chunk in split_message(text):
             if chunk:
-                await update.message.reply_text(chunk, parse_mode="Markdown")
+                try:
+                    await update.message.reply_text(chunk, parse_mode="Markdown")
+                except BadRequest:
+                    try:
+                        await update.message.reply_text(chunk)
+                    except Exception as e:
+                        logger.error(f"Failed to send reply: {e}")
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id

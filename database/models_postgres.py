@@ -101,6 +101,19 @@ CREATE_PERFORMANCE_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_perf_user_topic ON performance_tracking(user_id, topic)
 """
 
+CREATE_VOCABULARY = """
+CREATE TABLE IF NOT EXISTS vocabulary (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    course_id INTEGER REFERENCES courses(id),
+    lecture_id INTEGER REFERENCES lectures(id),
+    word TEXT NOT NULL,
+    meaning TEXT,
+    example TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
 ALL_TABLES = [
     CREATE_COURSES,
     CREATE_LECTURES,
@@ -110,5 +123,6 @@ ALL_TABLES = [
     CREATE_PERFORMANCE,
     CREATE_USER_PREFERENCES,
     CREATE_SESSIONS,
+    CREATE_VOCABULARY,
     CREATE_PERFORMANCE_INDEX,
 ]

@@ -105,6 +105,21 @@ CREATE TABLE IF NOT EXISTS conversation_sessions (
 )
 """
 
+CREATE_VOCABULARY = """
+CREATE TABLE IF NOT EXISTS vocabulary (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    course_id INTEGER,
+    lecture_id INTEGER,
+    word TEXT NOT NULL,
+    meaning TEXT,
+    example TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (course_id) REFERENCES courses(id),
+    FOREIGN KEY (lecture_id) REFERENCES lectures(id)
+)
+"""
+
 ALL_TABLES = [
     CREATE_COURSES,
     CREATE_LECTURES,
@@ -114,4 +129,5 @@ ALL_TABLES = [
     CREATE_PERFORMANCE,
     CREATE_USER_PREFERENCES,
     CREATE_SESSIONS,
+    CREATE_VOCABULARY,
 ]

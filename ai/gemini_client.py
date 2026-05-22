@@ -75,6 +75,7 @@ class GeminiClient:
             weak_topics=weak_topics,
             preferences=preferences or "none",
             current_time=current_utc,
+            vocabulary=context.get("vocabulary", "") or "none",
         )
 
         try:
@@ -126,6 +127,7 @@ class GeminiClient:
             weak_topics=weak_topics,
             preferences=preferences or "none",
             current_time=current_utc,
+            vocabulary=context.get("vocabulary", "") or "none",
         )
 
         raw = self._generate_with_history(history, user_text, system)
@@ -170,6 +172,17 @@ class GeminiClient:
                 val = stripped[len("WEAK_TOPIC:"):].strip()
                 if val:
                     state_updates.setdefault("weak_topics", []).append(val)
+            elif stripped.startswith("WORD:"):
+                val = stripped[len("WORD:"):].strip()
+                if val:
+                    parts = [p.strip() for p in val.split("|")]
+                    entry = {"word": parts[0]}
+                    if len(parts) > 1:
+                        entry["meaning"] = parts[1]
+                    if len(parts) > 2:
+                        entry["example"] = parts[2]
+                    state_updates.setdefault("words", []).append(entry)
+                    logger.info(f"WORD extracted: {entry}")
             elif stripped.startswith("PREFERENCE:"):
                 val = stripped[len("PREFERENCE:"):].strip()
                 if val and "=" in val:

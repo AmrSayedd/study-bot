@@ -338,7 +338,49 @@ class Database:
                     values
                 )
 
-    def add_to_history(self, user_id: int, role: str, text: str, max_history: int = 20):
+    # -- Vocabulary --
+    def add_word(self, user_id: int, word: str, meaning: str = "",
+                  example: str = "", course_id: int = None,
+                  lecture_id: int = None) -> dict:
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """INSERT INTO vocabulary (user_id, word, meaning, example, course_id, lecture_id)
+                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
+                (user_id, word, meaning, example, course_id, lecture_id)
+            )
+            return dict(cur.fetchone())
+
+    def get_vocabulary(self, user_id: int, course_id: int = None,
+                        lecture_id: int = None) -> list[dict]:
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if lecture_id:
+                cur.execute(
+                    "SELECT * FROM vocabulary WHERE user_id = %s AND lecture_id = %s ORDER BY created_at",
+                    (user_id, lecture_id)
+                )
+            elif course_id:
+                cur.execute(
+                    "SELECT * FROM vocabulary WHERE user_id = %s AND course_id = %s ORDER BY created_at",
+                    (user_id, course_id)
+                )
+            else:
+                cur.execute(
+                    "SELECT * FROM vocabulary WHERE user_id = %s ORDER BY created_at",
+                    (user_id,)
+                )
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_vocabulary_as_text(self, user_id: int, course_id: int = None,
+                                lecture_id: int = None) -> str:
+        words = self.get_vocabulary(user_id, course_id, lecture_id)
+        if not words:
+            return ""
+        return "\n".join(
+            f"- {w['word']}" + (f": {w['meaning']}" if w['meaning'] else "")
+            for w in words
+        )
+
+    def add_to_history(self, user_id: int, role: str, text: str, max_history: int = 50):
         session = self.get_or_create_session(user_id)
         history = json.loads(session.get("history", "[]"))
         history.append({"role": role, "text": text})
@@ -358,17 +400,20 @@ class Database:
         session = self.get_or_create_session(user_id)
         course = ""
         lecture = ""
-        if session.get("current_course_id"):
-            c = self.get_course(session["current_course_id"])
+        cid = session.get("current_course_id")
+        lid = session.get("current_lecture_id")
+        if cid:
+            c = self.get_course(cid)
             if c:
                 course = c["title"]
-        if session.get("current_lecture_id"):
-            l = self.get_lecture(session["current_lecture_id"])
+        if lid:
+            l = self.get_lecture(lid)
             if l:
                 lecture = l["title"]
         weak = self.get_weak_topics(user_id)
         prefs = self.get_preferences_as_text(user_id)
         reminders = self.get_due_reminders(user_id)
+        vocab = self.get_vocabulary_as_text(user_id, cid, lid)
         return {
             "session": session,
             "course": course,
@@ -377,6 +422,7 @@ class Database:
             "weak_topics": [w["topic"] for w in weak],
             "preferences": prefs,
             "reminders": reminders,
+            "vocabulary": vocab,
             "history": json.loads(session.get("history", "[]")),
         }
 
@@ -400,8 +446,8 @@ class Database:
 
         history.append({"role": "user", "text": user_text})
         history.append({"role": "assistant", "text": reply})
-        if len(history) > 20:
-            history = history[-20:]
+        if len(history) > 50:
+            history = history[-50:]
 
         set_clauses = ["updated_at = CURRENT_TIMESTAMP"]
         params = []
@@ -440,3 +486,13 @@ class Database:
                            DO UPDATE SET pref_value = %s, updated_at = CURRENT_TIMESTAMP""",
                         (user_id, key, value, value)
                     )
+        if "words" in updates:
+            for word_data in updates["words"]:
+                self.add_word(
+                    user_id,
+                    word_data.get("word", ""),
+                    word_data.get("meaning", ""),
+                    word_data.get("example", ""),
+                    new_cid or cid,
+                    new_lid or lid,
+                )
