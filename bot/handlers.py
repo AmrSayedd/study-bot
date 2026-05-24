@@ -61,8 +61,11 @@ class BotHandlers:
     async def _deliver_overdue_reminders(self, update: Update, reminders: list[dict]):
         if not reminders:
             return
+        claimed = [r for r in reminders if self.db.try_claim_reminder(r["id"])]
+        if not claimed:
+            return
         lines = ["\U0001F4CC *Your pending reminders:*"]
-        for r in reminders:
+        for r in claimed:
             tag = ""
             if r["course"]:
                 tag = f" [{r['course']}"
@@ -79,7 +82,7 @@ class BotHandlers:
                     await update.message.reply_text(chunk)
                 except Exception as e:
                     logger.error(f"Failed to deliver reminder: {e}")
-        for r in reminders:
+        for r in claimed:
             self.db.update_reminder_schedule(r["id"], True)
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

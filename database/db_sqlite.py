@@ -209,6 +209,16 @@ class Database:
         ).fetchall()
         return [r["user_id"] for r in rows]
 
+    def try_claim_reminder(self, reminder_id: int) -> bool:
+        """Atomically claim a reminder. Returns True if we own it, False if already claimed."""
+        cur = self.conn.execute(
+            """UPDATE reminders SET next_review_at = datetime('now', '+1 second')
+               WHERE id = ? AND next_review_at <= datetime('now')""",
+            (reminder_id,)
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
     def update_reminder_schedule(self, reminder_id: int, correct: bool):
         reminder = self.conn.execute(
             "SELECT * FROM reminders WHERE id = ?", (reminder_id,)

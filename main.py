@@ -50,14 +50,17 @@ async def push_reminders_for_user(bot, user_id: int):
     reminders = db.get_due_reminders(user_id)
     if not reminders:
         return
-    logger.info(f"Pushing {len(reminders)} reminders to user {user_id}")
-    msg = _format_reminders(reminders)
+    claimed = [r for r in reminders if db.try_claim_reminder(r["id"])]
+    if not claimed:
+        return
+    logger.info(f"Pushing {len(claimed)} reminders to user {user_id}")
+    msg = _format_reminders(claimed)
     try:
         await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
     except Exception as e:
         logger.warning(f"Failed to push reminder to user {user_id}: {e}")
         return
-    for r in reminders:
+    for r in claimed:
         db.update_reminder_schedule(r["id"], True)
 
 
@@ -140,9 +143,7 @@ async def webhook(request: Request):
 
 @app.get("/wake")
 async def wake():
-    if ptb_app:
-        await push_all_due_reminders(ptb_app.bot)
-    return {"status": "ok", "reminders_checked": ptb_app is not None}
+    return {"status": "ok", "warmed_up": True}
 
 
 @app.get("/health")

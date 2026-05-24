@@ -207,6 +207,16 @@ class Database:
             )
             return [r["user_id"] for r in cur.fetchall()]
 
+    def try_claim_reminder(self, reminder_id: int) -> bool:
+        """Atomically claim a reminder. Returns True if we own it, False if already claimed."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """UPDATE reminders SET next_review_at = NOW() + INTERVAL '1 second'
+                   WHERE id = %s AND next_review_at <= NOW()""",
+                (reminder_id,)
+            )
+            return cur.rowcount > 0
+
     def update_reminder_schedule(self, reminder_id: int, correct: bool):
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
