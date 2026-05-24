@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from datetime import datetime, timezone, timedelta
 from telegram import Update
@@ -104,6 +105,31 @@ class BotHandlers:
             text = f"{text}\n\n[The user shared the following documentation from a URL. Read and understand it to answer their question.]\n{doc_text}"
 
         await self._deliver_overdue_reminders(update, ctx["reminders"])
+
+        # Handle time questions server-side (AI fabricates times from training data)
+        time_lower = text.lower()
+        if any(phrase in time_lower for phrase in ["what time", "current time", "what's the time", "what is the time"]):
+            # Also check if user provided their offset in the same message
+            tz_match = re.search(r'UTC([+-]\d+)', text)
+            if tz_match:
+                offset = tz_match.group(1)
+                self.db.set_preference(user_id, "timezone_offset", offset)
+                now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                reply = f"The current server time is {now_utc} (your saved offset: UTC{offset})."
+                await self._reply(update, reply)
+                return
+            now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            tz = ctx.get("timezone_offset", "")
+            if tz:
+                reply = f"The current server time is {now_utc} (your offset: UTC{tz})."
+            else:
+                reply = (
+                    f"The current server time is {now_utc}.\n"
+                    "To convert to your local time, tell me your UTC offset "
+                    "(e.g., `I am UTC+2`) and I will save it."
+                )
+            await self._reply(update, reply)
+            return
 
         response_data = self.ai.chat(text, ctx)
         reply = response_data["text"]
