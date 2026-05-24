@@ -58,6 +58,30 @@ class BotHandlers:
                     except Exception as e:
                         logger.error(f"Failed to send reply: {e}")
 
+    async def _deliver_overdue_reminders(self, update: Update, reminders: list[dict]):
+        if not reminders:
+            return
+        lines = ["\U0001F4CC *Your pending reminders:*"]
+        for r in reminders:
+            tag = ""
+            if r["course"]:
+                tag = f" [{r['course']}"
+                if r["lecture"]:
+                    tag += f" \u2192 {r['lecture']}"
+                tag += "]"
+            lines.append(f"\u2022 {r['content']}{tag}")
+        msg = "\n".join(lines)
+        for chunk in split_message(msg):
+            try:
+                await update.message.reply_text(chunk, parse_mode="Markdown")
+            except BadRequest:
+                try:
+                    await update.message.reply_text(chunk)
+                except Exception as e:
+                    logger.error(f"Failed to deliver reminder: {e}")
+        for r in reminders:
+            self.db.update_reminder_schedule(r["id"], True)
+
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
         text = update.message.text.strip()
@@ -76,9 +100,7 @@ class BotHandlers:
         if doc_text:
             text = f"{text}\n\n[The user shared the following documentation from a URL. Read and understand it to answer their question.]\n{doc_text}"
 
-        if ctx["reminders"]:
-            for r in ctx["reminders"]:
-                self.db.update_reminder_schedule(r["id"], True)
+        await self._deliver_overdue_reminders(update, ctx["reminders"])
 
         response_data = self.ai.chat(text, ctx)
         reply = response_data["text"]
@@ -112,9 +134,7 @@ class BotHandlers:
         user_id = update.effective_user.id
         ctx = self.db.get_chat_context(user_id)
 
-        if ctx["reminders"]:
-            for r in ctx["reminders"]:
-                self.db.update_reminder_schedule(r["id"], True)
+        await self._deliver_overdue_reminders(update, ctx["reminders"])
 
         response_data = self.ai.chat_with_image(file_path, caption or "", ctx)
         reply = response_data["text"]
@@ -179,6 +199,9 @@ class BotHandlers:
         if ext not in (".pdf", ".txt", ".md"):
             await update.message.reply_text("I can only process PDF, TXT, Markdown, and image files.")
             return
+
+        ctx = self.db.get_chat_context(user_id)
+        await self._deliver_overdue_reminders(update, ctx["reminders"])
 
         await update.message.reply_text("Downloading your file...")
 
