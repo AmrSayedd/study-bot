@@ -314,6 +314,49 @@ class Database:
         self.conn.commit()
         return self.get_active_session(user_id)
 
+    def get_all_courses(self, user_id: int) -> list[dict]:
+        return self.get_courses(user_id)
+
+    def get_course_titles(self, user_id: int) -> str:
+        courses = self.get_all_courses(user_id)
+        return ", ".join(c["title"] for c in courses) if courses else "none"
+
+    # -- Course Notes --
+    def add_note(self, user_id: int, topic: str, content: str,
+                  course_id: int = None) -> dict:
+        cur = self.conn.execute(
+            """INSERT INTO course_notes (user_id, topic, content, course_id)
+               VALUES (?, ?, ?, ?)""",
+            (user_id, topic, content, course_id)
+        )
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT * FROM course_notes WHERE id = ?", (cur.lastrowid,)
+        ).fetchone()
+        return dict(row)
+
+    def get_notes_grouped(self, user_id: int) -> str:
+        rows = self.conn.execute(
+            """SELECT n.*, c.title as course_title
+               FROM course_notes n
+               LEFT JOIN courses c ON c.id = n.course_id
+               WHERE n.user_id = ?
+               ORDER BY n.course_id NULLS LAST, n.created_at""",
+            (user_id,)
+        ).fetchall()
+        if not rows:
+            return ""
+        groups = {}
+        for r in rows:
+            d = dict(r)
+            ct = d.get("course_title") or "General"
+            groups.setdefault(ct, [])
+            groups[ct].append(f"- {d['topic']}: {d['content']}")
+        parts = []
+        for ct in groups:
+            parts.append(f"{ct}:\n" + "\n".join(groups[ct]))
+        return "\n\n".join(parts)
+
     def update_session(self, user_id: int, **kwargs):
         fields = []
         values = []
@@ -410,6 +453,8 @@ class Database:
         prefs = self.get_preferences_as_text(user_id)
         reminders = self.get_due_reminders(user_id)
         vocab = self.get_vocabulary_as_text(user_id, cid, lid)
+        all_courses = self.get_course_titles(user_id)
+        all_notes = self.get_notes_grouped(user_id)
         return {
             "session": session,
             "course": course,
@@ -418,8 +463,10 @@ class Database:
             "weak_topics": [w["topic"] for w in weak],
             "preferences": prefs,
             "reminders": reminders,
-            "history": json.loads(session.get("history", "[]")),
             "vocabulary": vocab,
+            "all_courses": all_courses,
+            "all_notes": all_notes,
+            "history": json.loads(session.get("history", "[]")),
         }
 
     def save_chat_interaction(self, user_id: int, user_text: str,
@@ -489,4 +536,12 @@ class Database:
                     word_data.get("example", ""),
                     new_cid or cid,
                     new_lid or lid,
+                )
+        if "notes" in updates:
+            for note_data in updates["notes"]:
+                self.add_note(
+                    user_id,
+                    note_data.get("topic", ""),
+                    note_data.get("content", ""),
+                    new_cid or cid,
                 )

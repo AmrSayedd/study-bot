@@ -55,11 +55,12 @@ MODE: <daily|deep|teaching|oral_exam>
 REMINDER: <reminder text>
 REMINDER_AT: <minutes from now as a number>
 WORD: <word> | <meaning> | <example sentence>
+NOTE: <topic> | <content>
 PREFERENCE: <key>=<value>
 
-Only include a marker when the state needs to change. Omit markers when the state stays the same. Never include empty markers. REMINDER_AT should only be used together with REMINDER, never alone. When the user specifies a time, ALWAYS include both REMINDER and REMINDER_AT.
+Only include a marker when the state needs to change. Omit markers when the state stays the same. Never include empty markers. REMINDER_AT should only be used together with REMINDER, never alone. When the user specifies a time, ALWAYS include both REMINDER and REMINDER_AT. When the user shares information about a course (e.g., a formula, a definition, a fact), output a NOTE: marker to remember it permanently linked to that course.
 
-When the user asks you to save new vocabulary words (e.g., for a language course), output a WORD: marker for each word so it gets stored permanently. Use WORD: markers even if the word has been discussed before — duplicates are automatically handled.
+When the user asks you to save new vocabulary words (e.g., for a language course), output a WORD: marker for each word so it gets stored permanently. Use WORD: markers even if the word has been discussed before.
 
 If you detect a weak topic, you can include:
 WEAK_TOPIC: <topic name>
@@ -71,7 +72,9 @@ Lecture: {lecture}
 Mode: {mode}
 Weak topics: {weak_topics}
 Saved preferences: {preferences}
+All courses: {all_courses}
 Vocabulary bank: {vocabulary}
+Course notes: {all_notes}
 """
 
 GENERATE_LECTURE_CONTENT = """You are processing a lecture for a study companion app. Given the extracted text below, generate structured content.

@@ -76,6 +76,8 @@ class GeminiClient:
             preferences=preferences or "none",
             current_time=current_utc,
             vocabulary=context.get("vocabulary", "") or "none",
+            all_courses=context.get("all_courses", "") or "none",
+            all_notes=context.get("all_notes", "") or "none",
         )
 
         try:
@@ -128,6 +130,8 @@ class GeminiClient:
             preferences=preferences or "none",
             current_time=current_utc,
             vocabulary=context.get("vocabulary", "") or "none",
+            all_courses=context.get("all_courses", "") or "none",
+            all_notes=context.get("all_notes", "") or "none",
         )
 
         raw = self._generate_with_history(history, user_text, system)
@@ -172,6 +176,15 @@ class GeminiClient:
                 val = stripped[len("WEAK_TOPIC:"):].strip()
                 if val:
                     state_updates.setdefault("weak_topics", []).append(val)
+            elif stripped.startswith("NOTE:"):
+                val = stripped[len("NOTE:"):].strip()
+                if val:
+                    parts = [p.strip() for p in val.split("|")]
+                    entry = {"topic": parts[0]}
+                    if len(parts) > 1:
+                        entry["content"] = parts[1]
+                    state_updates.setdefault("notes", []).append(entry)
+                    logger.info(f"NOTE extracted: {entry}")
             elif stripped.startswith("WORD:"):
                 val = stripped[len("WORD:"):].strip()
                 if val:
