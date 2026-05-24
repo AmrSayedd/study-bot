@@ -113,6 +113,7 @@ class GeminiClient:
             return {"text": "Sorry, I couldn't process that image.", "state_updates": {}}
 
         text, state_updates = self._parse_response(raw)
+        text = self._strip_time_references(text)
         return {"text": text, "state_updates": state_updates}
 
     def chat(self, user_text: str, context: dict) -> dict:
@@ -141,10 +142,26 @@ class GeminiClient:
         raw = self._generate_with_history(history, user_text, system)
 
         text, state_updates = self._parse_response(raw)
+        text = self._strip_time_references(text)
         return {
             "text": text,
             "state_updates": state_updates,
         }
+
+    def _strip_time_references(self, text: str) -> str:
+        """Remove sentences that mention current time (AI fabricates these)."""
+        lines = text.split("\n")
+        clean = []
+        for line in lines:
+            lower = line.strip().lower()
+            if re.search(r'\b\d{1,2}:\d{2}\s*(am|pm)\s*utc\b', lower):
+                continue
+            if re.search(r'^(given )?the current (utc )?time is', lower):
+                continue
+            if re.search(r'\d+\s*minutes? (from now|away)', lower):
+                continue
+            clean.append(line)
+        return "\n".join(clean).strip()
 
     def _parse_response(self, raw: str) -> tuple:
         text = raw
