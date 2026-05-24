@@ -174,6 +174,26 @@ class Database:
                         course: str = None, lecture: str = None,
                         reminder_at: str = None) -> dict:
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """SELECT * FROM reminders
+                   WHERE user_id = %s AND LOWER(content) = LOWER(%s)
+                   AND COALESCE(course,'') = COALESCE(%s,'')
+                   AND COALESCE(lecture,'') = COALESCE(%s,'')
+                   AND next_review_at > NOW()
+                   ORDER BY next_review_at DESC LIMIT 1""",
+                (user_id, content, course or '', lecture or '')
+            )
+            existing = cur.fetchone()
+            if existing:
+                eid = existing["id"]
+                if reminder_at:
+                    cur.execute("UPDATE reminders SET next_review_at = %s WHERE id = %s", (reminder_at, eid))
+                else:
+                    cur.execute("UPDATE reminders SET next_review_at = NOW() + INTERVAL '1 day' WHERE id = %s", (eid,))
+                cur.execute("SELECT * FROM reminders WHERE id = %s", (eid,))
+                result = dict(cur.fetchone())
+                logger.info(f"Reminder updated (existing): id={result['id']}, next_review_at={result['next_review_at']}")
+                return result
             if reminder_at:
                 logger.info(f"Creating reminder for user {user_id} with reminder_at={reminder_at}")
                 cur.execute(

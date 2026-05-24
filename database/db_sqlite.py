@@ -174,6 +174,34 @@ class Database:
     def create_reminder(self, user_id: int, content: str,
                         course: str = None, lecture: str = None,
                         reminder_at: str = None) -> dict:
+        existing = self.conn.execute(
+            """SELECT * FROM reminders
+               WHERE user_id = ? AND LOWER(content) = LOWER(?)
+               AND COALESCE(course,'') = COALESCE(?,'')
+               AND COALESCE(lecture,'') = COALESCE(?,'')
+               AND next_review_at > datetime('now')
+               ORDER BY next_review_at DESC LIMIT 1""",
+            (user_id, content, course or '', lecture or '')
+        ).fetchone()
+        if existing:
+            eid = existing["id"]
+            if reminder_at:
+                self.conn.execute(
+                    "UPDATE reminders SET next_review_at = ? WHERE id = ?",
+                    (reminder_at, eid)
+                )
+            else:
+                self.conn.execute(
+                    "UPDATE reminders SET next_review_at = datetime('now', '+1 day') WHERE id = ?",
+                    (eid,)
+                )
+            self.conn.commit()
+            row = self.conn.execute(
+                "SELECT * FROM reminders WHERE id = ?", (eid,)
+            ).fetchone()
+            result = dict(row)
+            logger.info(f"Reminder updated (existing): id={result['id']}, next_review_at={result['next_review_at']}")
+            return result
         if reminder_at:
             logger.info(f"Creating reminder for user {user_id} with reminder_at={reminder_at}")
             cur = self.conn.execute(
