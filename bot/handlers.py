@@ -46,6 +46,76 @@ class BotHandlers:
         self.processor = LectureProcessor()
         self.revision_service = RevisionService(db, ai)
 
+    def _get_tz_offset(self, user_id: int) -> int:
+        offset_str = self.db.get_preference(user_id, "timezone_offset")
+        if offset_str:
+            try:
+                return int(offset_str)
+            except ValueError:
+                pass
+        return 0
+
+    def _parse_reminder_at(self, raw: str, user_id: int) -> str | None:
+        """Parse REMINDER_AT and return absolute UTC timestamp or None.
+           Supports: HH:MM (local), +N (relative min), HH:MM+Nd (local+days), plain number (legacy)"""
+        if not raw:
+            return None
+        now = datetime.now(timezone.utc)
+        raw = raw.strip()
+
+        # +N relative minutes
+        if raw.startswith("+"):
+            try:
+                minutes = int(raw[1:])
+                utc_time = now + timedelta(minutes=minutes)
+                if utc_time <= now:
+                    utc_time += timedelta(days=1)
+                result = utc_time.strftime("%Y-%m-%d %H:%M:%S")
+                logger.info(f"Computed reminder_at: {result} (+{minutes} min)")
+                return result
+            except (ValueError, TypeError):
+                return None
+
+        # HH:MM+Nd (local time + day offset)
+        day_match = re.match(r'^(\d{1,2}):(\d{2})\+(\d+)d$', raw)
+        if day_match:
+            hour, minute, days = int(day_match.group(1)), int(day_match.group(2)), int(day_match.group(3))
+            tz = self._get_tz_offset(user_id)
+            local_now = now + timedelta(hours=tz)
+            target_local = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(days=days)
+            if target_local <= local_now:
+                target_local += timedelta(days=1)
+            target_utc = target_local - timedelta(hours=tz)
+            result = target_utc.strftime("%Y-%m-%d %H:%M:%S")
+            logger.info(f"Computed reminder_at: {result} (local {hour:02d}:{minute:02d}+{days}d, UTC{tz:+d})")
+            return result
+
+        # HH:MM (local time)
+        time_match = re.match(r'^(\d{1,2}):(\d{2})$', raw)
+        if time_match:
+            hour, minute = int(time_match.group(1)), int(time_match.group(2))
+            tz = self._get_tz_offset(user_id)
+            local_now = now + timedelta(hours=tz)
+            target_local = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if target_local <= local_now:
+                target_local += timedelta(days=1)
+            target_utc = target_local - timedelta(hours=tz)
+            result = target_utc.strftime("%Y-%m-%d %H:%M:%S")
+            logger.info(f"Computed reminder_at: {result} (local {hour:02d}:{minute:02d}, UTC{tz:+d})")
+            return result
+
+        # Legacy: plain number (minutes from now)
+        try:
+            minutes = int(raw)
+            utc_time = now + timedelta(minutes=minutes)
+            if utc_time <= now:
+                utc_time += timedelta(days=1)
+            result = utc_time.strftime("%Y-%m-%d %H:%M:%S")
+            logger.info(f"Computed reminder_at: {result} (+{minutes} min, legacy)")
+            return result
+        except (ValueError, TypeError):
+            return None
+
     async def _reply(self, update: Update, text: str):
         if not text:
             return
@@ -143,15 +213,10 @@ class BotHandlers:
         updates["lecture_title"] = ctx["lecture"]
 
         if "reminder_at" in updates:
-            try:
-                minutes = int(updates["reminder_at"])
-                now = datetime.now(timezone.utc)
-                utc_time = now + timedelta(minutes=minutes)
-                if utc_time <= now:
-                    utc_time = now + timedelta(days=1)
-                updates["reminder_at"] = utc_time.strftime("%Y-%m-%d %H:%M:%S")
-                logger.info(f"Computed reminder_at: {updates['reminder_at']} (+{minutes} min from now)")
-            except (ValueError, TypeError):
+            parsed = self._parse_reminder_at(updates["reminder_at"], user_id)
+            if parsed:
+                updates["reminder_at"] = parsed
+            else:
                 logger.warning(f"Invalid REMINDER_AT value: {updates.get('reminder_at')}, falling back to default")
                 del updates["reminder_at"]
 
@@ -174,15 +239,10 @@ class BotHandlers:
         updates["lecture_title"] = ctx["lecture"]
 
         if "reminder_at" in updates:
-            try:
-                minutes = int(updates["reminder_at"])
-                now = datetime.now(timezone.utc)
-                utc_time = now + timedelta(minutes=minutes)
-                if utc_time <= now:
-                    utc_time = now + timedelta(days=1)
-                updates["reminder_at"] = utc_time.strftime("%Y-%m-%d %H:%M:%S")
-                logger.info(f"Computed reminder_at: {updates['reminder_at']} (+{minutes} min from now)")
-            except (ValueError, TypeError):
+            parsed = self._parse_reminder_at(updates["reminder_at"], user_id)
+            if parsed:
+                updates["reminder_at"] = parsed
+            else:
                 logger.warning(f"Invalid REMINDER_AT value: {updates.get('reminder_at')}, falling back to default")
                 del updates["reminder_at"]
 
