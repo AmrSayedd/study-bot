@@ -31,34 +31,50 @@ handlers = BotHandlers(db, ai)
 ptb_app: Application = None
 
 
-async def push_due_reminders(context: CallbackContext):
+def _format_reminders(reminders: list[dict]) -> str:
+    """Build Markdown message string from a list of reminder dicts."""
+    lines = ["\U0001F4CC *Your pending reminders:*"]
+    for r in reminders:
+        tag = ""
+        if r["course"]:
+            tag = f" [{r['course']}"
+            if r["lecture"]:
+                tag += f" \u2192 {r['lecture']}"
+            tag += "]"
+        lines.append(f"\u2022 {r['content']}{tag}")
+    return "\n".join(lines)
+
+
+async def push_reminders_for_user(bot, user_id: int):
+    """Fetch and deliver all due reminders for one user, then mark them sent."""
+    reminders = db.get_due_reminders(user_id)
+    if not reminders:
+        return
+    logger.info(f"Pushing {len(reminders)} reminders to user {user_id}")
+    msg = _format_reminders(reminders)
+    try:
+        await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
+    except Exception as e:
+        logger.warning(f"Failed to push reminder to user {user_id}: {e}")
+        return
+    for r in reminders:
+        db.update_reminder_schedule(r["id"], True)
+
+
+async def push_all_due_reminders(bot):
+    """Push reminders for every user who has due reminders."""
     try:
         user_ids = db.get_all_users_with_due_reminders()
         if user_ids:
             logger.info(f"Found {len(user_ids)} users with due reminders")
         for uid in user_ids:
-            reminders = db.get_due_reminders(uid)
-            if not reminders:
-                continue
-            logger.info(f"Pushing {len(reminders)} reminders to user {uid}")
-            lines = ["\U0001F4CC *Your pending reminders:*"]
-            for r in reminders:
-                tag = ""
-                if r["course"]:
-                    tag = f" [{r['course']}"
-                    if r["lecture"]:
-                        tag += f" \u2192 {r['lecture']}"
-                    tag += "]"
-                lines.append(f"\u2022 {r['content']}{tag}")
-            msg = "\n".join(lines)
-            try:
-                await context.bot.send_message(chat_id=uid, text=msg, parse_mode="Markdown")
-            except Exception as e:
-                logger.warning(f"Failed to push reminder to user {uid}: {e}")
-            for r in reminders:
-                db.update_reminder_schedule(r["id"], True)
+            await push_reminders_for_user(bot, uid)
     except Exception as e:
         logger.error(f"Reminder push error: {e}")
+
+
+async def push_due_reminders(context: CallbackContext):
+    await push_all_due_reminders(context.bot)
 
 
 @asynccontextmanager
@@ -120,6 +136,13 @@ async def webhook(request: Request):
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return {"error": str(e)}, 500
+
+
+@app.get("/wake")
+async def wake():
+    if ptb_app:
+        await push_all_due_reminders(ptb_app.bot)
+    return {"status": "ok", "reminders_checked": ptb_app is not None}
 
 
 @app.get("/health")
