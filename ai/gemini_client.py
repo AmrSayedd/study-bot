@@ -67,6 +67,7 @@ class GeminiClient:
         preferences = context.get("preferences", "")
         history = context.get("history", [])
         current_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        tz_offset = context.get("timezone_offset", "")
 
         system = prompts.SYSTEM_PROMPT.format(
             course=course or "not set",
@@ -75,6 +76,7 @@ class GeminiClient:
             weak_topics=weak_topics,
             preferences=preferences or "none",
             current_time=current_utc,
+            timezone_offset=tz_offset or "unknown",
             vocabulary=context.get("vocabulary", "") or "none",
             all_courses=context.get("all_courses", "") or "none",
             all_notes=context.get("all_notes", "") or "none",
@@ -121,6 +123,7 @@ class GeminiClient:
         preferences = context.get("preferences", "")
         history = context.get("history", [])
         current_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        tz_offset = context.get("timezone_offset", "")
 
         system = prompts.SYSTEM_PROMPT.format(
             course=course or "not set",
@@ -129,6 +132,7 @@ class GeminiClient:
             weak_topics=weak_topics,
             preferences=preferences or "none",
             current_time=current_utc,
+            timezone_offset=tz_offset or "unknown",
             vocabulary=context.get("vocabulary", "") or "none",
             all_courses=context.get("all_courses", "") or "none",
             all_notes=context.get("all_notes", "") or "none",

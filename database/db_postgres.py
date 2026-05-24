@@ -300,6 +300,15 @@ class Database:
             return "none"
         return "; ".join(f"{p['pref_key']}: {p['pref_value']}" for p in prefs)
 
+    def get_preference(self, user_id: int, key: str) -> str:
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT pref_value FROM user_preferences WHERE user_id = %s AND pref_key = %s",
+                (user_id, key)
+            )
+            row = cur.fetchone()
+            return row["pref_value"] if row else ""
+
     # -- Conversation Sessions --
     def get_active_session(self, user_id: int) -> Optional[dict]:
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -453,6 +462,7 @@ class Database:
                 lecture = l["title"]
         weak = self.get_weak_topics(user_id)
         prefs = self.get_preferences_as_text(user_id)
+        tz_offset = self.get_preference(user_id, "timezone_offset")
         reminders = self.get_due_reminders(user_id)
         vocab = self.get_vocabulary_as_text(user_id, cid, lid)
         all_courses = self.get_course_titles(user_id)
@@ -464,6 +474,7 @@ class Database:
             "mode": session.get("revision_mode", "daily"),
             "weak_topics": [w["topic"] for w in weak],
             "preferences": prefs,
+            "timezone_offset": tz_offset,
             "reminders": reminders,
             "vocabulary": vocab,
             "all_courses": all_courses,
