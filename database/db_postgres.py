@@ -194,6 +194,7 @@ class Database:
                 result = dict(cur.fetchone())
                 logger.info(f"Reminder updated (existing): id={result['id']}, next_review_at={result['next_review_at']}")
                 return result
+            self.dedup_reminders(user_id)
             if reminder_at:
                 logger.info(f"Creating reminder for user {user_id} with reminder_at={reminder_at}")
                 cur.execute(
@@ -211,6 +212,18 @@ class Database:
             result = dict(cur.fetchone())
             logger.info(f"Reminder stored: id={result['id']}, next_review_at={result['next_review_at']}")
             return result
+
+    def dedup_reminders(self, user_id: int):
+        """Remove duplicate reminders keeping only the newest per (content, course, lecture)."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """DELETE FROM reminders WHERE id NOT IN (
+                    SELECT MAX(id) FROM reminders
+                    WHERE user_id = %s
+                    GROUP BY LOWER(content), COALESCE(course,''), COALESCE(lecture,'')
+                ) AND user_id = %s""",
+                (user_id, user_id)
+            )
 
     def get_due_reminders(self, user_id: int) -> list[dict]:
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
