@@ -250,6 +250,8 @@ class Database:
             )
             return cur.rowcount > 0
 
+    MAX_REMINDER_PUSHES = 5
+
     def update_reminder_schedule(self, reminder_id: int, correct: bool):
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
@@ -262,6 +264,9 @@ class Database:
             if correct:
                 new_interval = r["interval_days"] * 2.0
                 new_reps = r["repetitions"] + 1
+                if new_reps >= self.MAX_REMINDER_PUSHES:
+                    cur.execute("DELETE FROM reminders WHERE id = %s", (reminder_id,))
+                    return
             else:
                 new_interval = 1.0
                 new_reps = 0
