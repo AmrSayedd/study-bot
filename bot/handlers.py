@@ -292,7 +292,6 @@ class BotHandlers:
             await update.message.reply_text("I can only process PDF, TXT, Markdown, and image files.")
             return
 
-        ctx = self.db.get_chat_context(user_id)
         await self._deliver_overdue_reminders(update, user_id)
 
         await update.message.reply_text("Downloading your file...")
