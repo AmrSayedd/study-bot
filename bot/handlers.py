@@ -129,9 +129,12 @@ class BotHandlers:
                     except Exception as e:
                         logger.error(f"Failed to send reply: {e}")
 
-    async def _deliver_overdue_reminders(self, update: Update, reminders: list[dict]):
+    async def _deliver_overdue_reminders(self, update: Update, user_id: int):
+        reminders = self.db.get_due_reminders(user_id)
         if not reminders:
             return
+        self.db.dedup_reminders(user_id)
+        reminders = self.db.get_due_reminders(user_id)
         claimed = [r for r in reminders if self.db.try_claim_reminder(r["id"])]
         if not claimed:
             return
@@ -174,7 +177,7 @@ class BotHandlers:
         if doc_text:
             text = f"{text}\n\n[The user shared the following documentation from a URL. Read and understand it to answer their question.]\n{doc_text}"
 
-        await self._deliver_overdue_reminders(update, ctx["reminders"])
+        await self._deliver_overdue_reminders(update, user_id)
 
         # Handle time questions server-side (AI fabricates times from training data)
         time_lower = text.lower()
@@ -228,7 +231,7 @@ class BotHandlers:
         user_id = update.effective_user.id
         ctx = self.db.get_chat_context(user_id)
 
-        await self._deliver_overdue_reminders(update, ctx["reminders"])
+        await self._deliver_overdue_reminders(update, user_id)
 
         response_data = self.ai.chat_with_image(file_path, caption or "", ctx)
         reply = response_data["text"]
@@ -290,7 +293,7 @@ class BotHandlers:
             return
 
         ctx = self.db.get_chat_context(user_id)
-        await self._deliver_overdue_reminders(update, ctx["reminders"])
+        await self._deliver_overdue_reminders(update, user_id)
 
         await update.message.reply_text("Downloading your file...")
 

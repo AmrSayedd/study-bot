@@ -47,6 +47,7 @@ def _format_reminders(reminders: list[dict]) -> str:
 
 async def push_reminders_for_user(bot, user_id: int):
     """Fetch and deliver all due reminders for one user, then mark them sent."""
+    db.dedup_reminders(user_id)
     reminders = db.get_due_reminders(user_id)
     if not reminders:
         return
