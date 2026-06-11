@@ -20,10 +20,18 @@ class Database:
         self.conn.autocommit = True
         self._init_tables()
 
+    ALL_TABLES_NAMES = [
+        "courses", "lectures", "lecture_sources", "questions",
+        "reminders", "performance_tracking", "user_preferences",
+        "conversation_sessions", "vocabulary", "course_notes",
+    ]
+
     def _init_tables(self):
         with self.conn.cursor() as cur:
             for stmt in ALL_TABLES:
                 cur.execute(stmt)
+            for t in self.ALL_TABLES_NAMES:
+                cur.execute(f"ALTER TABLE {t} ENABLE ROW LEVEL SECURITY;")
 
     def _row_to_dict(self, row):
         return dict(row) if row else None
