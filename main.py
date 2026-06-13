@@ -33,7 +33,7 @@ ptb_app: Application = None
 
 def _format_reminders(reminders: list[dict]) -> str:
     """Build Markdown message string from a list of reminder dicts."""
-    lines = ["\U0001F4CC *Your pending reminders:*"]
+    lines = ["\U0001F4CC <b>Your pending reminders:</b>"]
     for r in reminders:
         tag = ""
         if r["course"]:
@@ -57,7 +57,7 @@ async def push_reminders_for_user(bot, user_id: int):
     logger.info(f"Pushing {len(claimed)} reminders to user {user_id}")
     msg = _format_reminders(claimed)
     try:
-        await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
+        await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
     except Exception as e:
         logger.warning(f"Failed to push reminder to user {user_id}: {e}")
         return
