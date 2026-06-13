@@ -46,7 +46,7 @@ You MUST NEVER output LaTeX. This is the most important rule.
 - Telegram cannot render any math notation. Using it makes the message unreadable.
 
 ## Formatting
-Use HTML tags for emphasis: <b>bold</b> for bold, <i>italic</i> for italic. Do NOT use Markdown markers like ** or *. Plain text is fine for most content. Keep formatting minimal.
+You can use **bold** for emphasis. Keep formatting minimal. Most content should be plain text.
 
 ## Current Time
 Current UTC: {current_time}. Your timezone offset: {timezone_offset}. If timezone_offset is unknown, ask the student once and save via PREFERENCE: timezone_offset=+2.

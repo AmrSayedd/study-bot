@@ -156,7 +156,7 @@ class BotHandlers:
         for chunk in split_message(text):
             if chunk:
                 try:
-                    await update.message.reply_text(chunk, parse_mode="HTML")
+                    await update.message.reply_text(chunk, parse_mode="Markdown")
                 except BadRequest:
                     try:
                         await update.message.reply_text(chunk)
@@ -172,7 +172,7 @@ class BotHandlers:
         claimed = [r for r in reminders if self.db.try_claim_reminder(r["id"])]
         if not claimed:
             return
-        lines = ["\U0001F4CC <b>Your pending reminders:</b>"]
+        lines = ["\U0001F4CC *Your pending reminders:*"]
         for r in claimed:
             tag = ""
             if r["course"]:
@@ -184,7 +184,7 @@ class BotHandlers:
         msg = "\n".join(lines)
         for chunk in split_message(msg):
             try:
-                await update.message.reply_text(chunk, parse_mode="HTML")
+                await update.message.reply_text(chunk, parse_mode="Markdown")
             except BadRequest:
                 try:
                     await update.message.reply_text(chunk)
@@ -354,8 +354,8 @@ class BotHandlers:
             )
 
             reply = (
-                f"\u2705 Processed! Added to course <b>{result['course']}</b> \u2192 "
-                f"lecture <b>{result['lecture']}</b>.\n\n"
+                f"\u2705 Processed! Added to course *{result['course']}* \u2192 "
+                f"lecture *{result['lecture']}*.\n\n"
                 f"{result['summary']}\n\n"
                 f"Generated {result['question_count']} revision questions. "
                 f"Ready to revise whenever you like!"
@@ -366,7 +366,7 @@ class BotHandlers:
             self.db.add_to_history(user_id, "assistant", reply)
 
             for chunk in split_message(reply):
-                await update.message.reply_text(chunk, parse_mode="HTML")
+                await update.message.reply_text(chunk, parse_mode="Markdown")
 
         except Exception as e:
             logger.error(f"File processing error: {e}")
