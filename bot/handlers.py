@@ -46,6 +46,40 @@ class BotHandlers:
         self.processor = LectureProcessor()
         self.revision_service = RevisionService(db, ai)
 
+    GREEK = {
+        "alpha": "alpha", "beta": "beta", "gamma": "gamma",
+        "delta": "delta", "epsilon": "epsilon", "varepsilon": "epsilon",
+        "theta": "theta", "lambda": "lambda", "mu": "mu",
+        "pi": "pi", "sigma": "sigma", "omega": "omega",
+        "phi": "phi", "Phi": "Phi",
+    }
+
+    @staticmethod
+    def _sanitize_latex(text: str) -> str:
+        text = re.sub(r'\$\$(.*?)\$\$', r'\1', text, flags=re.DOTALL)
+        text = re.sub(r'\$(.*?)\$', r'\1', text, flags=re.DOTALL)
+        text = re.sub(r'\\\((.*?)\\\)', r'\1', text, flags=re.DOTALL)
+        text = re.sub(r'\\\[(.*?)\\\]', r'\1', text, flags=re.DOTALL)
+        text = re.sub(r'\\mathbf\{([^}]*)\}', r'\1', text)
+        text = re.sub(r'\\vec\{([^}]*)\}', r'\1', text)
+        text = re.sub(r'\\text\{([^}]*)\}', r'\1', text)
+        text = re.sub(r'\\boldsymbol\{([^}]*)\}', r'\1', text)
+        text = re.sub(r'\\widehat\{([^}]*)\}', r'\1', text)
+        text = re.sub(r'\\begin\{[^}]*\}', '', text)
+        text = re.sub(r'\\end\{[^}]*\}', '', text)
+        text = re.sub(r'\\ddot\{([^}]*)\}', r'\1_ddot', text)
+        text = re.sub(r'\\dot\{([^}]*)\}', r'\1_dot', text)
+        text = re.sub(r'\\sqrt\{([^}]*)\}', r'sqrt(\1)', text)
+        text = re.sub(r'\\frac\{([^}]*)\}\{([^}]*)\}', r'\1/\2', text)
+        text = re.sub(r'\\\|', '|', text)
+        text = text.replace(r'\\', ', ')
+        for cmd, name in BotHandlers.GREEK.items():
+            text = text.replace("\\" + cmd, name)
+        for cmd in ("approx", "times", "cdot", "rightarrow", "Rightarrow", "partial", "infty", "cdots", "vdots", "nabla", "div", "pm"):
+            text = text.replace("\\" + cmd, cmd)
+        text = text.replace("\\", "")
+        return text
+
     def _get_tz_offset(self, user_id: int) -> int:
         offset_str = self.db.get_preference(user_id, "timezone_offset")
         if offset_str:
@@ -223,9 +257,10 @@ class BotHandlers:
                 logger.warning(f"Invalid REMINDER_AT value: {updates.get('reminder_at')}, falling back to default")
                 del updates["reminder_at"]
 
-        self.db.save_chat_interaction(user_id, text, reply, updates)
+        reply_clean = self._sanitize_latex(reply)
+        self.db.save_chat_interaction(user_id, text, reply_clean, updates)
 
-        await self._reply(update, reply)
+        await self._reply(update, reply_clean)
 
     async def _handle_image(self, update: Update, file_path: str, caption: str):
         user_id = update.effective_user.id
@@ -249,9 +284,10 @@ class BotHandlers:
                 logger.warning(f"Invalid REMINDER_AT value: {updates.get('reminder_at')}, falling back to default")
                 del updates["reminder_at"]
 
-        self.db.save_chat_interaction(user_id, user_text, reply, updates)
+        reply_clean = self._sanitize_latex(reply)
+        self.db.save_chat_interaction(user_id, user_text, reply_clean, updates)
 
-        await self._reply(update, reply)
+        await self._reply(update, reply_clean)
 
     async def handle_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo = update.message.photo[-1]
@@ -326,6 +362,7 @@ class BotHandlers:
             )
 
             self.db.add_to_history(user_id, "user", f"[Uploaded file: {doc.file_name}]")
+            reply = self._sanitize_latex(reply)
             self.db.add_to_history(user_id, "assistant", reply)
 
             for chunk in split_message(reply):
