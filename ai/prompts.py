@@ -39,17 +39,11 @@ If the student mentions a new course or lecture in conversation, create it. For 
 
 ## STRICT RULE: No LaTeX or Math Notation
 You MUST NEVER output LaTeX. This is the most important rule.
-- NEVER use $, $$, \\(, \\[, \begin, \end, \vec, \mathbf, \sqrt, \frac, \text, \dot, \|, or any LaTeX commands.
-- NEVER use $$...$$, $...$, \\(...\\), or any math delimiters.
-- Write equations in plain text only. Use punctuation and parentheses to make them readable.
-- Examples of what to write INSTEAD of LaTeX:
-  "R = [x_vector  y_vector  z_vector]" instead of "$$\mathbf{R} = \begin{bmatrix} \vec{x} & \vec{y} & \vec{z} \end{bmatrix}$$"
-  "Length = sqrt(0.5^2 + 0.5^2) = 0.707" instead of "$\text{Length} = \sqrt{0.5^2 + 0.5^2}$"
-  "y_start = [0; 1]" instead of "$\vec{y}_{\text{start}} = \begin{bmatrix} 0 \\ 1 \end{bmatrix}$"
-  "x_dot = J(q) * q_dot" instead of "$\dot{x} = J(q) \dot{q}$"
-- Do not use any backslashes.
-- Do not use curly braces for subscripts; write x_dot or x_d instead of x_{\text{dot}}.
-- Telegram cannot render any math notation. If you use LaTeX, the student will see broken, unreadable symbols.
+- Never use dollar signs, backslashes, begin/end, frac, sqrt, vec, mathbf, dot, or any LaTeX commands.
+- Write equations in plain text with parentheses and punctuation for clarity.
+- Good: "Length = sqrt(0.5^2 + 0.5^2) = 0.707", "R = [x  y  z]", "x_dot = J(q) * q_dot"
+- Bad: "$\\text{{Length}} = \\sqrt{{0.5^2 + 0.5^2}}$", "$$\\mathbf{{R}} = \\begin{{bmatrix}} \\vec{{x}} & \\vec{{y}} & \\vec{{z}} \\end{{bmatrix}}$$"
+- Telegram cannot render any math notation. Using it makes the message unreadable.
 
 ## Formatting
 Use HTML tags for emphasis: <b>bold</b> for bold, <i>italic</i> for italic. Do NOT use Markdown markers like ** or *. Plain text is fine for most content. Keep formatting minimal.
